@@ -2,7 +2,10 @@ use std::collections::HashMap;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError, Uint512};
+use cosmwasm_std::{
+    to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo, Reply, ReplyOn, Response,
+    StdError, SubMsg, Uint512, WasmMsg,
+};
 use cw2::set_contract_version;
 use euclid::admin::EuclidAdmin;
 use euclid::cross_chain_user::CrossChainUser;
@@ -12,8 +15,10 @@ use euclid::token::TokenType;
 use euclid_ibc::state::NATIVE_CROSS_CHAIN_MSG_REPLY_QUEUE_RANGE;
 
 use crate::execute::pool::{
-    add_liquidity_request, execute_request_pool_creation,
-    execute_single_sided_add_liquidity_request,
+    add_concentrated_liquidity_request, add_liquidity_request, collect_concentrated_fees_request,
+    collect_concentrated_protocol_fees_request, execute_request_concentrated_pool_creation,
+    execute_request_pool_creation, execute_single_sided_add_liquidity_request,
+    remove_concentrated_liquidity_request,
 };
 use crate::execute::relay::{
     execute_native_receive_callback, execute_receive_acknowledgement, execute_receive_packet,
@@ -26,13 +31,16 @@ use crate::execute::token::{
 };
 use crate::execute::{execute_manage_factory_state, receive_cw20, receive_euclid_native};
 use crate::query::{
-    get_escrow, get_lp_token_address, get_partner_fees_collected, get_rate_limit_state,
-    get_user_rate_limit, get_vlp, pending_liquidity, pending_remove_liquidity,
-    pending_single_sided_liquidity, pending_swaps, query_all_pools, query_all_tokens, query_state,
+    get_concentrated_vlp, get_escrow, get_lp_token_address, get_partner_fees_collected,
+    get_position_token_contract, get_rate_limit_state, get_user_rate_limit, get_vlp,
+    pending_liquidity, pending_remove_liquidity, pending_single_sided_liquidity, pending_swaps,
+    query_all_concentrated_pools, query_all_pools, query_all_tokens, query_state,
 };
 use crate::rate_limit::{RateLimitState, RATE_LIMIT_STATE};
 use crate::reply::{
-    self, on_lp_instantiate_reply, CROSS_CHAIN_RECEIVE_REPLY_ID, LP_INSTANTIATE_REPLY_ID,
+    self, on_lp_instantiate_reply, on_pool_factory_delegate_reply,
+    on_position_token_instantiate_reply, CROSS_CHAIN_RECEIVE_REPLY_ID, LP_INSTANTIATE_REPLY_ID,
+    POOL_FACTORY_DELEGATE_REPLY_ID, POSITION_TOKEN_INSTANTIATE_REPLY_ID,
 };
 use crate::reply::{
     on_escrow_instantiate_reply, on_release_escrow_reply, ESCROW_INSTANTIATE_REPLY_ID,
@@ -59,6 +67,7 @@ pub fn instantiate(
         relayer_contract: msg.relayer_contract.clone(),
         escrow_code_id: msg.escrow_code_id,
         lp_code_id: msg.lp_code_id,
+        position_token_code_id: msg.position_token_code_id,
         chain_uid,
         is_native: msg.is_native,
     };
@@ -85,9 +94,28 @@ pub fn instantiate(
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
 
     STATE.save(deps.storage, &state)?;
-    ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender.clone()))?;
+    let admin = EuclidAdmin::default(info.sender.clone());
+    ADMIN.save(deps.storage, &admin)?;
+
+    let init_position_token_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+        admin: Some(admin.migration_admin.to_string()),
+        code_id: msg.position_token_code_id,
+        msg: to_json_binary(&euclid::msgs::position_token::InstantiateMsg {
+            name: "Euclid Concentrated Positions".to_string(),
+            symbol: "EUPOS".to_string(),
+        })?,
+        funds: vec![],
+        label: "position_token".to_string(),
+    });
 
     Ok(Response::new()
+        .add_submessage(SubMsg {
+            id: POSITION_TOKEN_INSTANTIATE_REPLY_ID,
+            msg: init_position_token_msg,
+            gas_limit: None,
+            reply_on: ReplyOn::Success,
+            payload: Binary::default(),
+        })
         .add_attribute("method", "instantiate")
         .add_attribute("router_contract", msg.router_contract)
         .add_attribute("escrow_code_id", state.escrow_code_id.to_string())
@@ -181,6 +209,24 @@ pub fn execute(
             slippage_tolerance_bps,
             cross_chain_config,
         ),
+        ExecuteMsg::RequestConcentratedPoolCreation {
+            pair_with_denom_and_amount,
+            fee_tier_bps,
+            tick_spacing,
+            slippage_tolerance_bps,
+            initial_tick,
+            cross_chain_config,
+        } => execute_request_concentrated_pool_creation(
+            &mut deps,
+            env,
+            info,
+            pair_with_denom_and_amount,
+            fee_tier_bps,
+            tick_spacing,
+            slippage_tolerance_bps,
+            initial_tick,
+            cross_chain_config,
+        ),
         ExecuteMsg::AddLiquidity {
             pair_with_denom_and_amount,
             slippage_tolerance_bps,
@@ -191,6 +237,77 @@ pub fn execute(
             env,
             pair_with_denom_and_amount,
             slippage_tolerance_bps,
+            cross_chain_config,
+        ),
+        ExecuteMsg::AddConcentratedLiquidity {
+            pair_with_denom_and_amount,
+            pool_key,
+            lower_tick_index,
+            upper_tick_index,
+            position_id,
+            slippage_tolerance_bps,
+            cross_chain_config,
+        } => add_concentrated_liquidity_request(
+            &mut deps,
+            info,
+            env,
+            pair_with_denom_and_amount,
+            pool_key,
+            lower_tick_index,
+            upper_tick_index,
+            position_id,
+            slippage_tolerance_bps,
+            cross_chain_config,
+        ),
+        ExecuteMsg::RemoveConcentratedLiquidity {
+            pool_key,
+            position_id,
+            liquidity_delta,
+            recipient,
+            cross_chain_config,
+        } => {
+            let state = STATE.load(deps.storage)?;
+            let sender = CrossChainUser::new(state.chain_uid, info.sender.to_string());
+            remove_concentrated_liquidity_request(
+                &mut deps,
+                info,
+                env,
+                sender,
+                pool_key,
+                position_id,
+                liquidity_delta,
+                recipient,
+                cross_chain_config,
+            )
+        }
+        ExecuteMsg::CollectConcentratedFees {
+            pool_key,
+            position_id,
+            recipient,
+            cross_chain_config,
+        } => collect_concentrated_fees_request(
+            &mut deps,
+            info,
+            env,
+            pool_key,
+            position_id,
+            recipient,
+            cross_chain_config,
+        ),
+        ExecuteMsg::CollectConcentratedProtocolFees {
+            pool_key,
+            recipient,
+            amount_0_requested,
+            amount_1_requested,
+            cross_chain_config,
+        } => collect_concentrated_protocol_fees_request(
+            &mut deps,
+            info,
+            env,
+            pool_key,
+            recipient,
+            amount_0_requested,
+            amount_1_requested,
             cross_chain_config,
         ),
         ExecuteMsg::AddSingleSidedLiquidity {
@@ -300,6 +417,48 @@ pub fn execute(
             destination_port,
             ack,
         ),
+        ExecuteMsg::SetPoolFactory {
+            pool_factory_address,
+        } => crate::execute::proxy::execute_set_pool_factory(deps, env, info, pool_factory_address),
+        ExecuteMsg::ProxyMintLpToken {
+            lp_token,
+            recipient,
+            amount,
+        } => crate::execute::proxy::execute_proxy_mint_lp_token(
+            deps, env, info, lp_token, recipient, amount,
+        ),
+        ExecuteMsg::ProxyReleaseEscrow {
+            token,
+            denom,
+            recipient,
+            amount,
+        } => crate::execute::proxy::execute_proxy_release_escrow(
+            deps, env, info, token, denom, recipient, amount,
+        ),
+        ExecuteMsg::ProxyBurnLpToken { lp_token, amount } => {
+            crate::execute::proxy::execute_proxy_burn_lp_token(deps, env, info, lp_token, amount)
+        }
+        ExecuteMsg::ProxyTransferLpToken {
+            lp_token,
+            recipient,
+            amount,
+        } => crate::execute::proxy::execute_proxy_transfer_lp_token(
+            deps, env, info, lp_token, recipient, amount,
+        ),
+        ExecuteMsg::ProxyMintPosition {
+            token_id,
+            owner,
+            vlp_address,
+            liquidity,
+        } => crate::execute::proxy::execute_proxy_mint_position(
+            deps,
+            env,
+            info,
+            token_id,
+            owner,
+            vlp_address,
+            liquidity,
+        ),
     }
 }
 
@@ -307,10 +466,12 @@ pub fn execute(
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
         QueryMsg::GetVlp { pair } => get_vlp(deps, pair),
+        QueryMsg::GetConcentratedVlp { pool_key } => get_concentrated_vlp(deps, pool_key),
         QueryMsg::GetLPToken { vlp } => get_lp_token_address(deps, vlp),
         QueryMsg::GetEscrow { token_id } => get_escrow(deps, token_id),
         QueryMsg::GetState {} => query_state(deps),
         QueryMsg::GetAllPools {} => query_all_pools(deps),
+        QueryMsg::GetAllConcentratedPools {} => query_all_concentrated_pools(deps),
         // Pool Queries //
         QueryMsg::PendingSwapsUser { user, pagination } => pending_swaps(deps, user, pagination),
         QueryMsg::PendingLiquidity { user, pagination } => {
@@ -324,8 +485,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         }
         QueryMsg::GetAllTokens {} => query_all_tokens(deps),
         QueryMsg::GetPartnerFeesCollected {} => get_partner_fees_collected(deps),
+        QueryMsg::GetPositionTokenContract {} => get_position_token_contract(deps),
         QueryMsg::GetRateLimitState {} => get_rate_limit_state(deps),
         QueryMsg::GetUserRateLimit { user } => get_user_rate_limit(deps, user),
+        QueryMsg::QueryAdminRole { addr, role } => crate::query::query_admin_role(deps, addr, role),
+        QueryMsg::QueryPoolFactoryAddress {} => crate::query::query_pool_factory_address(deps),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -343,7 +507,10 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
         LP_INSTANTIATE_REPLY_ID => on_lp_instantiate_reply(deps.branch(), msg),
         RELEASE_ESCROW_REPLY_ID => on_release_escrow_reply(deps.branch(), msg),
         CROSS_CHAIN_RECEIVE_REPLY_ID => reply::on_cross_chain_receive_reply(deps.branch(), msg),
-
+        POSITION_TOKEN_INSTANTIATE_REPLY_ID => {
+            on_position_token_instantiate_reply(deps.branch(), msg)
+        }
+        POOL_FACTORY_DELEGATE_REPLY_ID => on_pool_factory_delegate_reply(deps.branch(), env, msg),
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id
@@ -451,6 +618,7 @@ mod tests {
             chain_uid: ChainUid::create("validuid123".to_string()).unwrap(),
             escrow_code_id: 10,
             lp_code_id: 11,
+            position_token_code_id: 12,
             is_native: false,
             relayer_contract: Addr::unchecked(TEST_RELAYER),
             rate_limit_fee_recipient: Addr::unchecked(TEST_RATE_LIMIT_FEE_RECIPIENT),

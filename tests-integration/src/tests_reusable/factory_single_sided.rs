@@ -67,6 +67,7 @@ pub fn single_sided_add_liquidity(
             swap_route: vec![NextSwapPair {
                 token_in: asset_in.token,
                 token_out: asset_out,
+                pool_key: None,
                 test_fail: None,
             }],
             min_lp_out,
@@ -532,11 +533,13 @@ mod tests {
             NextSwapPair {
                 token_in: Token::create("uusdc".to_string()).unwrap(),
                 token_out: Token::create("uusdt".to_string()).unwrap(),
+                pool_key: None,
                 test_fail: None,
             },
             NextSwapPair {
                 token_in: Token::create("uusdt".to_string()).unwrap(),
                 token_out: Token::create("uusdc".to_string()).unwrap(),
+                pool_key: None,
                 test_fail: None,
             },
         ],
@@ -546,6 +549,7 @@ mod tests {
         vec![NextSwapPair {
             token_in: Token::create("udai".to_string()).unwrap(),
             token_out: Token::create("uusdt".to_string()).unwrap(),
+            pool_key: None,
             test_fail: None,
         }],
         "swap_route first hop token_in must match asset_in"
@@ -554,6 +558,7 @@ mod tests {
         vec![NextSwapPair {
             token_in: Token::create("uusdc".to_string()).unwrap(),
             token_out: Token::create("udai".to_string()).unwrap(),
+            pool_key: None,
             test_fail: None,
         }],
         "swap_route last hop token_out must match the other pair token"

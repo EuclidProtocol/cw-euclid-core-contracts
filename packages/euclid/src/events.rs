@@ -1,7 +1,7 @@
 use core::fmt;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Event, Uint256};
+use cosmwasm_std::{Event, Uint128, Uint256};
 
 use crate::{
     chain::ChainUid,
@@ -54,6 +54,22 @@ pub fn deposit_token_event(tx_id: &str, deposit: &DepositTokenRequest) -> Event 
         .add_attribute("asset_in", deposit.asset_in.token.to_string())
         .add_attribute("asset_in_denom", deposit.asset_in.token_type.get_key())
         .add_attribute("amount_in", deposit.amount_in)
+}
+
+pub fn clp_add_liquidity_event(
+    tx_id: &str,
+    position_id: Uint128,
+    liquidity_delta: Uint128,
+    used_token_1: Uint128,
+    used_token_2: Uint128,
+) -> Event {
+    simple_event()
+        .add_attribute("action", "clp_add_liquidity")
+        .add_attribute("tx_id", tx_id)
+        .add_attribute("position_id", position_id)
+        .add_attribute("liquidity_delta", liquidity_delta)
+        .add_attribute("used_token_1", used_token_1)
+        .add_attribute("used_token_2", used_token_2)
 }
 
 pub fn register_factory_event(
@@ -227,4 +243,25 @@ pub fn escrow_balance_change_event(
         .add_attribute("token_id", token_id)
         .add_attribute("chain_uid", chain_uid.to_string())
         .add_attribute("token_type", token_type.get_key())
+}
+
+pub const EUCLID_FEE_OVERRIDE_CHANGE_EVENT: &str = "euclid-fee-override-change";
+/// Emitted when the fee admin sets or removes a per-wallet Euclid-fee override.
+///
+/// `action` is `"set"` when an override is upserted and `"remove"` when an
+/// entry is cleared. On set, `euclid_fee_bps` carries the new value; on remove
+/// the attribute is omitted.
+pub fn euclid_fee_override_change_event(
+    action: &str,
+    user: &CrossChainUser,
+    euclid_fee_bps: Option<u64>,
+) -> Event {
+    let event = Event::new(EUCLID_FEE_OVERRIDE_CHANGE_EVENT)
+        .add_attribute("action", action)
+        .add_attribute("chain_uid", user.chain_uid.to_string())
+        .add_attribute("address", user.address.clone());
+    match euclid_fee_bps {
+        Some(bps) => event.add_attribute("euclid_fee_bps", bps.to_string()),
+        None => event,
+    }
 }

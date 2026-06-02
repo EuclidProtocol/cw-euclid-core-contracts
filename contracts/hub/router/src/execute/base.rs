@@ -8,14 +8,16 @@ use euclid_ibc::{
 };
 
 use crate::state::{
-    CHAIN_TIMEOUT_SECONDS, DEFAULT_RELEASE_FEE, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT,
+    CHAIN_TIMEOUT_SECONDS, DEFAULT_RELEASE_FEE, EUCLID_FEE_OVERRIDES, FEE_STATE, LOCKED_CHAINS,
+    RELAYER_CONTRACT,
 };
 use euclid::{
     admin,
     chain::{Chain, ChainUid, CosmosChain, EvmChain},
     cross_chain_user::CrossChainUser,
     error::ContractError,
-    events::{tx_event, TxType},
+    events::{euclid_fee_override_change_event, tx_event, TxType},
+    fee::MAX_FEE_BPS,
     msgs::{
         hook::MetaReceive,
         router::{ManageRouterState, RegisterFactoryChainType},
@@ -48,6 +50,7 @@ pub fn execute_manage_router_state(
         ManageRouterState::Vlp {
             vlp_code_id,
             stable_vlp_code_id,
+            concentrated_vlp_code_id,
         } => {
             ensure!(
                 info.sender == admins.migration_admin,
@@ -56,6 +59,8 @@ pub fn execute_manage_router_state(
             state.constant_product_vlp_code_id =
                 vlp_code_id.unwrap_or(state.constant_product_vlp_code_id);
             state.stable_vlp_code_id = stable_vlp_code_id.unwrap_or(state.stable_vlp_code_id);
+            state.concentrated_vlp_code_id =
+                concentrated_vlp_code_id.unwrap_or(state.concentrated_vlp_code_id);
             STATE.save(deps.storage, &state)?;
             Ok(Response::new().add_attribute("method", "update_vlp_code_id"))
         }
@@ -199,6 +204,50 @@ pub fn execute_manage_router_state(
                 .add_attribute("method", "update_chain_timeout")
                 .add_attribute("chain_uid", chain_uid.to_string())
                 .add_attribute("timeout", timeout.to_string()))
+        }
+        ManageRouterState::SetEuclidFeeOverride {
+            user,
+            euclid_fee_bps,
+        } => {
+            ensure!(
+                info.sender == admins.fee_admin,
+                ContractError::Unauthorized {}
+            );
+            let user = user.validate()?.to_owned();
+            let key = (user.chain_uid.clone(), user.address.clone());
+            let (action, response) = match euclid_fee_bps {
+                Some(bps) => {
+                    ensure!(
+                        bps <= MAX_FEE_BPS,
+                        ContractError::new("Euclid fee override exceeds MAX_FEE_BPS")
+                    );
+                    EUCLID_FEE_OVERRIDES.save(deps.storage, key, &bps)?;
+                    (
+                        "set",
+                        Response::new()
+                            .add_attribute("method", "set_euclid_fee_override")
+                            .add_attribute("chain_uid", user.chain_uid.to_string())
+                            .add_attribute("address", user.address.clone())
+                            .add_attribute("euclid_fee_bps", bps.to_string()),
+                    )
+                }
+                None => {
+                    EUCLID_FEE_OVERRIDES.remove(deps.storage, key);
+                    (
+                        "remove",
+                        Response::new()
+                            .add_attribute("method", "set_euclid_fee_override")
+                            .add_attribute("chain_uid", user.chain_uid.to_string())
+                            .add_attribute("address", user.address.clone())
+                            .add_attribute("action", "remove"),
+                    )
+                }
+            };
+            Ok(response.add_event(euclid_fee_override_change_event(
+                action,
+                &user,
+                euclid_fee_bps,
+            )))
         }
     }
 }
@@ -409,6 +458,8 @@ mod tests {
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
         error::ContractError,
+        events::EUCLID_FEE_OVERRIDE_CHANGE_EVENT,
+        fee::MAX_FEE_BPS,
         msgs::{
             hook::MetaReceive,
             router::{
@@ -424,8 +475,8 @@ mod tests {
     use crate::{
         contract::execute,
         state::{
-            ADMIN, FEE_STATE, LOCKED_CHAINS, META_TRANSACTION_CONTRACT, RELAYER_CONTRACT,
-            RELEASE_FEES, STATE,
+            ADMIN, EUCLID_FEE_OVERRIDES, FEE_STATE, LOCKED_CHAINS, META_TRANSACTION_CONTRACT,
+            RELAYER_CONTRACT, RELEASE_FEES, STATE,
         },
         testing::{
             fixtures::initialized,
@@ -440,7 +491,7 @@ mod tests {
     // -----------------------------------------------------------------------
     #[rstest]
     #[case::lock_state(ManageRouterState::LockState { locked: true })]
-    #[case::vlp_code_id(ManageRouterState::Vlp { vlp_code_id: Some(99), stable_vlp_code_id: None })]
+    #[case::vlp_code_id(ManageRouterState::Vlp { vlp_code_id: Some(99), stable_vlp_code_id: None, concentrated_vlp_code_id: None })]
     #[case::relayer_contract(ManageRouterState::RelayerContract { relayer_contract: Addr::unchecked("x") })]
     #[case::meta_transaction_contract(ManageRouterState::MetaTransactionContract { meta_transaction_contract: Addr::unchecked("x") })]
     #[case::update_fee_state(ManageRouterState::UpdateFeeState { release_fee_recipient: None, default_fee_recipient: None })]
@@ -539,6 +590,7 @@ mod tests {
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
                 vlp_code_id: Some(99),
                 stable_vlp_code_id: None,
+                concentrated_vlp_code_id: None,
             }),
         )
         .unwrap();
@@ -553,6 +605,7 @@ mod tests {
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
                 vlp_code_id: None,
                 stable_vlp_code_id: Some(77),
+                concentrated_vlp_code_id: None,
             }),
         )
         .unwrap();
@@ -891,6 +944,7 @@ mod tests {
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
                 vlp_code_id: Some(99),
                 stable_vlp_code_id: None,
+                concentrated_vlp_code_id: None,
             }),
         );
         assert_eq!(res.unwrap_err(), ContractError::Unauthorized {});
@@ -903,6 +957,7 @@ mod tests {
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
                 vlp_code_id: Some(99),
                 stable_vlp_code_id: None,
+                concentrated_vlp_code_id: None,
             }),
         )
         .unwrap();
@@ -1044,6 +1099,7 @@ mod tests {
             ExecuteMsg::ManageRouterState(ManageRouterState::Vlp {
                 vlp_code_id: Some(99),
                 stable_vlp_code_id: Some(88),
+                concentrated_vlp_code_id: Some(77),
             }),
         )
         .unwrap();
@@ -1058,6 +1114,7 @@ mod tests {
         let state = STATE.load(initialized.as_ref().storage).unwrap();
         assert_eq!(state.constant_product_vlp_code_id, 99);
         assert_eq!(state.stable_vlp_code_id, 88);
+        assert_eq!(state.concentrated_vlp_code_id, 77);
         assert!(state.locked);
 
         execute(
@@ -1341,6 +1398,7 @@ mod tests {
                 token_in: token_a,
                 token_out: Token::create("bbb".to_string()).unwrap(),
                 test_fail: None,
+                pool_key: None,
             }],
             recipients: vec![],
             partner_fee_amount: Uint256::zero(),
@@ -1384,6 +1442,7 @@ mod tests {
                 token_in: token_a,
                 token_out: Token::create("bbb".to_string()).unwrap(),
                 test_fail: None,
+                pool_key: None,
             }],
             recipients: vec![],
             partner_fee_amount: Uint256::zero(),
@@ -1444,5 +1503,372 @@ mod tests {
             }),
         );
         assert!(res.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // SetEuclidFeeOverride (SC-23 Issue 1)
+    // -----------------------------------------------------------------------
+
+    fn override_user(chain: &str, addr: &str) -> CrossChainUser {
+        CrossChainUser::new(
+            ChainUid::create(chain.to_string()).unwrap(),
+            addr.to_string(),
+        )
+    }
+
+    /// Fee admin can upsert; resolved value matches; updating the same wallet overwrites.
+    #[rstest]
+    fn test_set_euclid_fee_override_upsert_and_update(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let user = override_user("chain1", "wallet1");
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: Some(25),
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            EUCLID_FEE_OVERRIDES
+                .load(
+                    initialized.as_ref().storage,
+                    (user.chain_uid.clone(), user.address.clone()),
+                )
+                .unwrap(),
+            25u64
+        );
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: Some(50),
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            EUCLID_FEE_OVERRIDES
+                .load(
+                    initialized.as_ref().storage,
+                    (user.chain_uid.clone(), user.address.clone()),
+                )
+                .unwrap(),
+            50u64
+        );
+    }
+
+    /// `Some(0)` is accepted and stored as full exemption.
+    #[rstest]
+    fn test_set_euclid_fee_override_zero_is_full_exemption(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let user = override_user("chain1", "wallet1");
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: Some(0),
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            EUCLID_FEE_OVERRIDES
+                .load(initialized.as_ref().storage, (user.chain_uid, user.address),)
+                .unwrap(),
+            0u64
+        );
+    }
+
+    /// `None` removes a previously-set entry.
+    #[rstest]
+    fn test_set_euclid_fee_override_none_removes_entry(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let user = override_user("chain1", "wallet1");
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: Some(40),
+            }),
+        )
+        .unwrap();
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: None,
+            }),
+        )
+        .unwrap();
+        assert!(!EUCLID_FEE_OVERRIDES
+            .has(initialized.as_ref().storage, (user.chain_uid, user.address),));
+    }
+
+    /// Removing an absent entry is a no-op (idempotent).
+    #[rstest]
+    fn test_set_euclid_fee_override_remove_absent_is_noop(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let user = override_user("chain1", "wallet1");
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: None,
+            }),
+        )
+        .unwrap();
+        assert!(!EUCLID_FEE_OVERRIDES
+            .has(initialized.as_ref().storage, (user.chain_uid, user.address),));
+    }
+
+    /// `MAX_FEE_BPS` is accepted; values above it are rejected.
+    #[rstest]
+    fn test_set_euclid_fee_override_max_fee_boundary(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let user = override_user("chain1", "wallet1");
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: Some(MAX_FEE_BPS),
+            }),
+        )
+        .unwrap();
+
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user,
+                euclid_fee_bps: Some(MAX_FEE_BPS + 1),
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::new("Euclid fee override exceeds MAX_FEE_BPS")
+        );
+    }
+
+    /// Only fee_admin may set/remove overrides; general_admin and migration_admin are rejected.
+    #[rstest]
+    fn test_set_euclid_fee_override_requires_fee_admin(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let dedicated_fee_admin = initialized.api.addr_make("dedicated_fee_admin");
+        let new_general = initialized.api.addr_make("new_general");
+        let attacker = initialized.api.addr_make("attacker");
+        let user = override_user("chain1", "wallet1");
+
+        // Transfer fee_admin and general_admin off creator so each role is distinct.
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::Admins {
+                admin_type: AdminType::FeeAdmin,
+                admin: dedicated_fee_admin.to_string(),
+            }),
+        )
+        .unwrap();
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::Admins {
+                admin_type: AdminType::GeneralAdmin,
+                admin: new_general.to_string(),
+            }),
+        )
+        .unwrap();
+
+        // general_admin rejected.
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&new_general, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: Some(10),
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+
+        // Arbitrary caller rejected.
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&attacker, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: Some(10),
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+
+        // Creator (now only migration_admin) rejected — migration_admin must not bypass.
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: Some(10),
+            }),
+        )
+        .unwrap_err();
+        assert_eq!(err, ContractError::Unauthorized {});
+
+        // Dedicated fee admin succeeds.
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&dedicated_fee_admin, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: Some(10),
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            EUCLID_FEE_OVERRIDES
+                .load(initialized.as_ref().storage, (user.chain_uid, user.address),)
+                .unwrap(),
+            10u64
+        );
+    }
+
+    /// Overrides are keyed per (chain, address): identical address on two chains
+    /// resolves independently.
+    #[rstest]
+    fn test_set_euclid_fee_override_per_chain_keying(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let u1 = override_user("chain1", "wallet");
+        let u2 = override_user("chain2", "wallet");
+
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: u1.clone(),
+                euclid_fee_bps: Some(15),
+            }),
+        )
+        .unwrap();
+
+        assert_eq!(
+            EUCLID_FEE_OVERRIDES
+                .may_load(initialized.as_ref().storage, (u1.chain_uid, u1.address),)
+                .unwrap(),
+            Some(15u64)
+        );
+        assert_eq!(
+            EUCLID_FEE_OVERRIDES
+                .may_load(initialized.as_ref().storage, (u2.chain_uid, u2.address),)
+                .unwrap(),
+            None
+        );
+    }
+
+    /// Indexing event is emitted on set (with `euclid_fee_bps`) and on remove (without).
+    #[rstest]
+    fn test_set_euclid_fee_override_emits_event(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let user = override_user("chain1", "wallet1");
+
+        let res_set = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: Some(75),
+            }),
+        )
+        .unwrap();
+        let ev = res_set
+            .events
+            .iter()
+            .find(|e| e.ty == EUCLID_FEE_OVERRIDE_CHANGE_EVENT)
+            .expect("set must emit override-change event");
+        let attr = |k: &str| {
+            ev.attributes
+                .iter()
+                .find(|a| a.key == k)
+                .map(|a| a.value.clone())
+        };
+        assert_eq!(attr("action").as_deref(), Some("set"));
+        assert_eq!(attr("chain_uid").as_deref(), Some("chain1"));
+        assert_eq!(attr("address").as_deref(), Some("wallet1"));
+        assert_eq!(attr("euclid_fee_bps").as_deref(), Some("75"));
+
+        let res_remove = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user,
+                euclid_fee_bps: None,
+            }),
+        )
+        .unwrap();
+        let ev = res_remove
+            .events
+            .iter()
+            .find(|e| e.ty == EUCLID_FEE_OVERRIDE_CHANGE_EVENT)
+            .expect("remove must emit override-change event");
+        let attr = |k: &str| {
+            ev.attributes
+                .iter()
+                .find(|a| a.key == k)
+                .map(|a| a.value.clone())
+        };
+        assert_eq!(attr("action").as_deref(), Some("remove"));
+        assert_eq!(attr("chain_uid").as_deref(), Some("chain1"));
+        assert_eq!(attr("address").as_deref(), Some("wallet1"));
+        assert_eq!(attr("euclid_fee_bps"), None);
+    }
+
+    /// Invalid CrossChainUser (uppercase address) is rejected by validation.
+    #[rstest]
+    fn test_set_euclid_fee_override_rejects_invalid_user(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let bad_user = CrossChainUser::new(
+            ChainUid::create("chain1".to_string()).unwrap(),
+            "MixedCase".to_string(),
+        );
+        let err = execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: bad_user,
+                euclid_fee_bps: Some(10),
+            }),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("Address must be lowercase"));
     }
 }

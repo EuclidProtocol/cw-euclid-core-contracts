@@ -13,6 +13,7 @@ use euclid::{chain::ChainUid, msgs::router::RegisterFactoryChainEvm};
 use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
 use factory::FactoryContract;
 use lp_token::LpTokenContract;
+use position_token::PositionTokenContract;
 use router::RouterContract;
 
 use crate::helpers::chains::setup_relayer;
@@ -74,6 +75,7 @@ pub fn setup_factory_with_mode(
     let factory = FactoryContract::new(chain.clone());
     let escrow = EscrowContract::new(chain.clone());
     let lp_token = LpTokenContract::new(chain.clone());
+    let position_token = PositionTokenContract::new(chain.clone());
     let relayer = setup_relayer(&chain, vec![vsl_chain_uid.as_str(), chain_uid.as_str()])?;
 
     let string_length = factory_chain_id.len();
@@ -81,6 +83,7 @@ pub fn setup_factory_with_mode(
     factory.upload().unwrap();
     escrow.upload().unwrap();
     lp_token.upload().unwrap();
+    position_token.upload().unwrap();
 
     let is_native = matches!(mode, FactorySetupMode::Native);
 
@@ -92,6 +95,7 @@ pub fn setup_factory_with_mode(
                 chain_uid: chain_uid.clone(),
                 escrow_code_id: escrow.code_id().unwrap(),
                 lp_code_id: lp_token.code_id().unwrap(),
+                position_token_code_id: position_token.code_id().unwrap(),
                 relayer_contract: relayer.address().unwrap(),
                 rate_limit_fee_recipient: chain.addr_make("rate_limit_fee_recipient"),
                 rate_limit_fee_denom: "ufee".to_string(),

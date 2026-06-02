@@ -1,5 +1,6 @@
 #![cfg(not(target_arch = "wasm32"))]
 use claimer::ClaimerContract;
+use concentrated_vlp::ConcentratedVlpContract;
 use cosmwasm_std::{from_json, Uint256};
 use cp_vlp::VlpContract;
 use cw_orch::{mock::MockBase, prelude::*};
@@ -13,12 +14,17 @@ use euclid::msgs::router::{
 use euclid::{
     chain::{ChainType, ChainUid},
     msgs::router::RegisterFactoryChainEvm,
+    msgs::vlp::concentrated::msg::{
+        MigrateMsg as ConcentratedMigrateMsg, MigrationStatusResponse,
+        QueryMsg as ConcentratedQueryMsg,
+    },
 };
 use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
 use euclid_relayer::RelayerContract;
 use factory::FactoryContract;
 use lp_token::LpTokenContract;
 use meta_transaction::MetaTransactionContract;
+use position_token::PositionTokenContract;
 use relayer::verify::cosmos_address_from_pubkey;
 use relayer::ExecuteMsgFns as RelayerExecuteMsgFns;
 use relayer::Validator;
@@ -102,6 +108,8 @@ fn setup_factory_inner(
     factory.upload().unwrap();
     escrow.upload().unwrap();
     lp_token.upload().unwrap();
+    let position_token = PositionTokenContract::new(chain.clone());
+    position_token.upload().unwrap();
 
     let is_native = router_chain_id == factory_chain_id;
 
@@ -113,6 +121,7 @@ fn setup_factory_inner(
                 chain_uid: chain_uid.clone(),
                 escrow_code_id: escrow.code_id().unwrap(),
                 lp_code_id: lp_token.code_id().unwrap(),
+                position_token_code_id: position_token.code_id().unwrap(),
                 relayer_contract: relayer.address().unwrap(),
                 rate_limit_fee_recipient: chain.addr_make("rate_limit_fee_recipient"),
                 rate_limit_fee_denom: "ufee".to_string(),
@@ -196,17 +205,20 @@ pub fn setup_router(
     let virtual_balance = VirtualBalanceContract::new(chain.clone());
     let vlp = VlpContract::new(chain.clone());
     let stable_vlp = StableVlpContract::new(chain.clone());
+    let concentrated_vlp = ConcentratedVlpContract::new(chain.clone());
     let relayer = setup_relayer(chain, factory_chains)?;
 
     router.upload().unwrap();
     virtual_balance.upload().unwrap();
     vlp.upload().unwrap();
     stable_vlp.upload().unwrap();
+    concentrated_vlp.upload().unwrap();
 
     router.instantiate(
         &euclid::msgs::router::InstantiateMsg {
             constant_product_vlp_code_id: vlp.code_id().unwrap(),
             stable_vlp_code_id: stable_vlp.code_id().unwrap(),
+            concentrated_vlp_code_id: concentrated_vlp.code_id().unwrap(),
             virtual_balance_code_id: virtual_balance.code_id().unwrap(),
             relayer_contract: relayer.address().unwrap(),
             release_fee_recipient: chain.addr_make("release_fee_recipient"),
@@ -314,6 +326,38 @@ pub fn get_virtual_balance(chain: &MockBase, address: &Addr) -> VirtualBalanceCo
     virtual_balance
 }
 
+pub fn get_concentrated_vlp(chain: &MockBase, address: &Addr) -> ConcentratedVlpContract<MockBase> {
+    let mut concentrated_vlp = ConcentratedVlpContract::new(chain.clone());
+    concentrated_vlp.as_instance_mut().id = format!("concentrated_vlp_{}", address);
+    concentrated_vlp.set_address(address);
+    concentrated_vlp
+}
+
+pub fn upload_concentrated_vlp_code(chain: &MockBase) -> Result<u64, CwOrchError> {
+    let concentrated_vlp = ConcentratedVlpContract::new(chain.clone());
+    concentrated_vlp.upload()?;
+    concentrated_vlp.code_id()
+}
+
+pub fn migrate_concentrated_vlp(
+    chain: &MockBase,
+    address: &Addr,
+    new_code_id: u64,
+    msg: ConcentratedMigrateMsg,
+) -> Result<(), CwOrchError> {
+    let vlp = get_concentrated_vlp(chain, address);
+    vlp.migrate(&msg, new_code_id)?;
+    Ok(())
+}
+
+pub fn query_concentrated_migration_status(
+    chain: &MockBase,
+    address: &Addr,
+) -> Result<MigrationStatusResponse, CwOrchError> {
+    let vlp = get_concentrated_vlp(chain, address);
+    vlp.query(&ConcentratedQueryMsg::MigrationStatus {})
+}
+
 pub fn get_lp_token(chain: &MockBase, address: &Addr) -> LpTokenContract<MockBase> {
     let mut lp_token = LpTokenContract::new(chain.clone());
     lp_token.as_instance_mut().id = format!("lp_token_{}", address);
@@ -353,6 +397,13 @@ pub fn get_relayer(chain: &MockBase, address: &Addr) -> RelayerContract<MockBase
     relayer.as_instance_mut().id = format!("relayer_{}", address);
     relayer.set_address(address);
     relayer
+}
+
+pub fn get_position_token(chain: &MockBase, address: &Addr) -> PositionTokenContract<MockBase> {
+    let mut position_token = PositionTokenContract::new(chain.clone());
+    position_token.as_instance_mut().id = format!("position_token_{}", address);
+    position_token.set_address(address);
+    position_token
 }
 
 pub fn _get_claimer(chain: &MockBase, address: &Addr) -> ClaimerContract<MockBase> {

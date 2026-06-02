@@ -5,6 +5,7 @@ use cosmwasm_std::Addr;
 pub struct InstantiateMsg {
     pub constant_product_vlp_code_id: u64,
     pub stable_vlp_code_id: u64,
+    pub concentrated_vlp_code_id: u64,
 
     pub virtual_balance_code_id: u64,
     pub relayer_contract: Addr,

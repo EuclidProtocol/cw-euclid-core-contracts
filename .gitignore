@@ -5,3 +5,6 @@
 /.claude
 /plans
 /proto
+.worktrees
+.claude
+TODO.md

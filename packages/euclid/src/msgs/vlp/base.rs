@@ -1,11 +1,12 @@
 use crate::{
     cross_chain_user::CrossChainUser,
+    error::ContractError,
     fee::{Fee, TotalFees},
     swap::NextSwapVlp,
     token::{Pair, PairWithAmount, Token},
 };
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint256, Uint64};
+use cosmwasm_std::{Addr, Uint128, Uint256, Uint64};
 
 pub const NEXT_SWAP_REPLY_ID: u64 = 2;
 
@@ -36,6 +37,13 @@ pub struct VlpSwapMsg {
     pub min_token_out: Uint256,
     pub next_swaps: Vec<NextSwapVlp>,
     pub test_fail: Option<bool>,
+    /// Per-wallet Euclid-fee override in basis points, resolved by the Router
+    /// for the swap's `sender` and stamped onto the outgoing message. `Some(bps)`
+    /// replaces the pool's configured Euclid fee for this swap (`Some(0)` = full
+    /// exemption); `None` keeps the pool's configured Euclid fee. Defaulted so
+    /// older Routers that omit the field decode to the unchanged behavior.
+    #[serde(default)]
+    pub euclid_fee_override: Option<u64>,
 }
 
 #[cw_serde]
@@ -61,10 +69,66 @@ pub struct VlpRegisterPoolMsg {
 }
 
 #[cw_serde]
+pub struct VlpConcentratedRegisterPoolMsg {
+    pub sender: CrossChainUser,
+    pub pool_key: PoolKey,
+    pub tx_id: String,
+}
+
+#[cw_serde]
 pub struct VlpSimulateSwapMsg {
     pub asset: Token,
     pub asset_amount: Uint256,
     pub swaps: Vec<NextSwapVlp>,
+    /// Sender-level Euclid-fee override, resolved by the Router from the
+    /// simulation request's optional sender and stamped on so the simulated
+    /// Euclid fee matches what execution charges. Forwarded hop-to-hop exactly
+    /// like `VlpSwapMsg.euclid_fee_override`. `None` keeps the pool's
+    /// configured Euclid fee. Defaulted so older Routers that omit the field
+    /// decode to the unchanged (full-fee) behavior.
+    #[serde(default)]
+    pub euclid_fee_override: Option<u64>,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedAddLiquidityMsg {
+    pub sender: CrossChainUser,
+    pub tx_id: String,
+    pub pool_key: PoolKey,
+    pub liquidity: PairWithAmount,
+    pub lower_tick_index: i64,
+    pub upper_tick_index: i64,
+    pub position_id: Uint128,
+    pub slippage_tolerance_bps: u64,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedRemoveLiquidityMsg {
+    pub sender: CrossChainUser,
+    pub tx_id: String,
+    pub pool_key: PoolKey,
+    pub position_id: Uint128,
+    #[serde(alias = "lp_allocation")]
+    pub liquidity_delta: Uint128,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedCollectFeesMsg {
+    pub sender: CrossChainUser,
+    pub tx_id: String,
+    pub pool_key: PoolKey,
+    pub position_id: Uint128,
+    pub recipient: CrossChainUser,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedCollectProtocolFeesMsg {
+    pub sender: CrossChainUser,
+    pub tx_id: String,
+    pub pool_key: PoolKey,
+    pub recipient: CrossChainUser,
+    pub amount_0_requested: Uint128,
+    pub amount_1_requested: Uint128,
 }
 
 #[cw_serde]
@@ -89,6 +153,14 @@ pub struct PoolCreationResponse {
     pub vlp_contract: String,
     pub tx_id: String,
     pub mint_lp_tokens: Uint256,
+    pub sender: CrossChainUser,
+}
+
+#[cw_serde]
+pub struct ConcentratedPoolCreationResponse {
+    pub pool_key: PoolKey,
+    pub vlp_contract: String,
+    pub tx_id: String,
     pub sender: CrossChainUser,
 }
 
@@ -119,15 +191,141 @@ pub struct VlpRemoveLiquidityResponse {
 }
 
 #[cw_serde]
+pub struct VlpConcentratedAddLiquidityResponse {
+    pub liquidity_added: PairWithAmount,
+    pub liquidity_delta: Uint128,
+    pub position_id: Uint128,
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub vlp_address: String,
+    pub pool_key: PoolKey,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedRemoveLiquidityResponse {
+    pub liquidity_released: PairWithAmount,
+    pub liquidity_delta: Uint128,
+    pub liquidity_after: Uint128,
+    pub position_id: Uint128,
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub vlp_address: String,
+    pub pool_key: PoolKey,
+    /// True when the VLP deleted the position from storage (zero liquidity and zero owed fees).
+    pub position_burned: bool,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedCollectFeesResponse {
+    pub pool_key: PoolKey,
+    pub position_id: Uint128,
+    pub amount_0: Uint128,
+    pub amount_1: Uint128,
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub recipient: CrossChainUser,
+    pub vlp_address: String,
+}
+
+#[cw_serde]
+pub struct VlpConcentratedCollectProtocolFeesResponse {
+    pub pool_key: PoolKey,
+    pub amount_0: Uint128,
+    pub amount_1: Uint128,
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub recipient: CrossChainUser,
+    pub vlp_address: String,
+}
+
+#[cw_serde]
 pub struct RegisterDenomResponse {}
 
 #[cw_serde]
 pub struct DeregisterDenomResponse {}
 
 #[cw_serde]
-pub enum PoolConfig {
-    Stable { amp_factor: Option<Uint64> },
+pub enum PoolType {
     ConstantProduct {},
+    Stable {},
+    Concentrated {
+        fee_tier_bps: u64,
+        tick_spacing: u64,
+    },
+}
+
+#[cw_serde]
+pub struct PoolKey {
+    pub pair: Pair,
+    pub pool_type: PoolType,
+}
+
+impl PoolKey {
+    pub fn get_fee_tier_bps(&self) -> Result<u64, ContractError> {
+        match self.pool_type {
+            PoolType::Concentrated { fee_tier_bps, .. } => Ok(fee_tier_bps),
+            _ => Err(ContractError::new("Invalid pool type")),
+        }
+    }
+
+    pub fn get_tick_spacing(&self) -> Result<u64, ContractError> {
+        match self.pool_type {
+            PoolType::Concentrated { tick_spacing, .. } => Ok(tick_spacing),
+            _ => Err(ContractError::new("Invalid pool type")),
+        }
+    }
+}
+
+impl PoolKey {
+    /// Encode this pool key as a null-byte-delimited string suitable for use as a storage map key.
+    pub fn to_map_key(&self) -> String {
+        let (fee_tier_bps, tick_spacing) = match self.pool_type {
+            PoolType::Concentrated {
+                fee_tier_bps,
+                tick_spacing,
+            } => (fee_tier_bps, tick_spacing),
+            _ => (0, 0),
+        };
+        format!(
+            "{}\0{}\0{}\0{}",
+            self.pair.token_1, self.pair.token_2, fee_tier_bps, tick_spacing
+        )
+    }
+
+    /// Decode a null-byte-delimited map key into its component parts.
+    pub fn parse_map_key(key: &str) -> Option<(String, String, u64, u64)> {
+        let mut parts = key.split('\0');
+        let token_1 = parts.next()?.to_string();
+        let token_2 = parts.next()?.to_string();
+        let fee_tier_bps = parts.next()?.parse::<u64>().ok()?;
+        let tick_spacing = parts.next()?.parse::<u64>().ok()?;
+        if parts.next().is_some() {
+            return None;
+        }
+        Some((token_1, token_2, fee_tier_bps, tick_spacing))
+    }
+}
+
+#[cw_serde]
+pub enum PoolConfig {
+    Stable {
+        amp_factor: Option<Uint64>,
+    },
+    ConstantProduct {},
+    Concentrated {
+        fee_tier_bps: u64,
+        tick_spacing: u64,
+    },
+}
+
+impl std::fmt::Display for PoolConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PoolConfig::Stable { .. } => write!(f, "stable"),
+            PoolConfig::ConstantProduct {} => write!(f, "constant_product"),
+            PoolConfig::Concentrated { .. } => write!(f, "concentrated"),
+        }
+    }
 }
 
 #[cw_serde]
@@ -139,7 +337,169 @@ pub enum QueryMsg {
 #[cw_serde]
 pub enum ExecuteMsg {
     RegisterPool(VlpRegisterPoolMsg),
+    RegisterConcentratedPool(VlpConcentratedRegisterPoolMsg),
     AddLiquidity(VlpAddLiquidityMsg),
+    AddConcentratedLiquidity(VlpConcentratedAddLiquidityMsg),
     RemoveLiquidity(VlpRemoveLiquidityMsg),
+    RemoveConcentratedLiquidity(VlpConcentratedRemoveLiquidityMsg),
+    CollectConcentratedFees(VlpConcentratedCollectFeesMsg),
+    CollectConcentratedProtocolFees(VlpConcentratedCollectProtocolFeesMsg),
     Swap(VlpSwapMsg),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::token::{Pair, Token};
+
+    fn concentrated_pool_key(t1: &str, t2: &str, fee: u64, spacing: u64) -> PoolKey {
+        PoolKey {
+            pair: Pair::new(
+                Token::create(t1.to_string()).unwrap(),
+                Token::create(t2.to_string()).unwrap(),
+            )
+            .unwrap(),
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: fee,
+                tick_spacing: spacing,
+            },
+        }
+    }
+
+    #[test]
+    fn pool_key_to_map_key_roundtrip_table() {
+        // Tokens must be in canonical (lexicographic) order since Pair::new sorts them.
+        let cases = vec![
+            ("tokena", "tokenb", 500, 10),
+            ("abc", "xyz", 3000, 60),
+            ("a", "b", 0, 0),
+            ("aaa", "zzz", 10000, 200),
+        ];
+
+        for (t1, t2, fee, spacing) in cases {
+            let key = concentrated_pool_key(t1, t2, fee, spacing);
+            let encoded = key.to_map_key();
+            let (rt1, rt2, rfee, rspacing) =
+                PoolKey::parse_map_key(&encoded).expect("roundtrip should succeed");
+            assert_eq!(rt1, t1, "token_1 mismatch for ({t1}, {t2})");
+            assert_eq!(rt2, t2, "token_2 mismatch for ({t1}, {t2})");
+            assert_eq!(rfee, fee, "fee mismatch for ({t1}, {t2})");
+            assert_eq!(rspacing, spacing, "spacing mismatch for ({t1}, {t2})");
+        }
+    }
+
+    #[test]
+    fn pool_key_parse_rejects_malformed_keys() {
+        let cases: Vec<(&str, &str)> = vec![
+            ("", "empty string"),
+            ("a\0b", "only two parts"),
+            ("a\0b\0500", "only three parts"),
+            ("a\0b\0500\010\0extra", "five parts"),
+            ("a\0b\0notnum\010", "non-numeric fee"),
+            ("a\0b\0500\0notnum", "non-numeric spacing"),
+        ];
+
+        for (input, label) in cases {
+            assert!(
+                PoolKey::parse_map_key(input).is_none(),
+                "should reject: {label}"
+            );
+        }
+    }
+
+    #[test]
+    fn pool_key_non_concentrated_uses_zero_fee_and_spacing() {
+        let key = PoolKey {
+            pair: Pair::new(
+                Token::create("tokena".to_string()).unwrap(),
+                Token::create("tokenb".to_string()).unwrap(),
+            )
+            .unwrap(),
+            pool_type: PoolType::ConstantProduct {},
+        };
+        let encoded = key.to_map_key();
+        let (_, _, fee, spacing) = PoolKey::parse_map_key(&encoded).unwrap();
+        assert_eq!(fee, 0);
+        assert_eq!(spacing, 0);
+    }
+}
+
+#[cfg(test)]
+mod euclid_fee_override_rollout_tests {
+    //! SC-23 Issue 7 — graceful-fallback rollout safety.
+    //!
+    //! The Euclid-fee override rolls out by upgrading the VLPs first, then the
+    //! Router (no hard version gate). The new swap-message fields are optional
+    //! and serde-defaulted, so old/new contract combinations decode without
+    //! error during the rollout window. These tests pin that contract:
+    //!
+    //! - **old Router -> new VLP**: a message lacking `euclid_fee_override`
+    //!   decodes to `None` (the VLP keeps the pool's configured Euclid fee).
+    //! - **new Router -> old VLP**: a message carrying `euclid_fee_override` is
+    //!   accepted by a struct that does not know the field (unknown fields are
+    //!   ignored, not rejected), so the old VLP simply charges the full fee.
+    //!
+    //! Either way: no error, no fund issue, and the LP fee is never touched
+    //! (LP fee is always the pool rate in `pre_swap`, independent of the
+    //! override — covered by the euclid-pool fee-math tests).
+    use super::*;
+    use cosmwasm_std::from_json;
+
+    #[test]
+    fn vlp_swap_msg_without_override_defaults_to_none() {
+        // Payload an *old* Router would send (no `euclid_fee_override`).
+        let legacy = br#"{
+            "sender": {"chain_uid": "chainA", "address": "addr1"},
+            "tx_id": "tx-1",
+            "asset_in": "usdc",
+            "amount_in": "1000",
+            "min_token_out": "1",
+            "swaps": [],
+            "next_swaps": []
+        }"#;
+        let msg: VlpSwapMsg = from_json(legacy).expect("legacy VlpSwapMsg must decode");
+        assert_eq!(msg.euclid_fee_override, None);
+    }
+
+    #[test]
+    fn vlp_swap_msg_with_override_decodes() {
+        let modern = br#"{
+            "sender": {"chain_uid": "chainA", "address": "addr1"},
+            "tx_id": "tx-1",
+            "asset_in": "usdc",
+            "amount_in": "1000",
+            "min_token_out": "1",
+            "swaps": [],
+            "next_swaps": [],
+            "euclid_fee_override": 0
+        }"#;
+        let msg: VlpSwapMsg = from_json(modern).expect("modern VlpSwapMsg must decode");
+        assert_eq!(msg.euclid_fee_override, Some(0));
+    }
+
+    #[test]
+    fn vlp_simulate_swap_msg_without_override_defaults_to_none() {
+        let legacy = br#"{"asset": "usdc", "asset_amount": "1000", "swaps": []}"#;
+        let msg: VlpSimulateSwapMsg =
+            from_json(legacy).expect("legacy VlpSimulateSwapMsg must decode");
+        assert_eq!(msg.euclid_fee_override, None);
+    }
+
+    #[test]
+    fn new_field_message_decodes_into_unaware_struct() {
+        // A *new* Router emits `euclid_fee_override`; an *old* VLP's struct (here
+        // stood in for by an extra unknown field) must ignore it, not reject it.
+        // cw_serde does not set `deny_unknown_fields`, so unknown keys are
+        // dropped — the swap proceeds at the full fee instead of erroring.
+        let forward_compat = br#"{
+            "asset": "usdc",
+            "asset_amount": "1000",
+            "swaps": [],
+            "euclid_fee_override": 7,
+            "a_field_from_an_even_newer_router": "ignored"
+        }"#;
+        let msg: VlpSimulateSwapMsg =
+            from_json(forward_compat).expect("unknown fields must be ignored, not rejected");
+        assert_eq!(msg.euclid_fee_override, Some(7));
+    }
 }

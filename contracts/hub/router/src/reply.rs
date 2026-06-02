@@ -9,12 +9,19 @@ use euclid::{
     error::ContractError,
     events::{simple_event, EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT},
     fee::BPS_50_PERCENT,
-    liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
+    liquidity::{
+        AddLiquidityResponse, ConcentratedAddLiquidityResponse, ConcentratedCollectFeesResponse,
+        ConcentratedCollectProtocolFeesResponse, ConcentratedRemoveLiquidityResponse,
+        RemoveLiquidityResponse,
+    },
     msgs::{
         self,
         virtual_balance::msg::{ExecuteApprove, ExecuteMsg as VirtualBalanceMsg},
         vlp::base::{
-            PoolCreationResponse, VlpAddLiquidityMsg, VlpRemoveLiquidityResponse, VlpSwapResponse,
+            ConcentratedPoolCreationResponse, PoolCreationResponse, VlpAddLiquidityMsg,
+            VlpAddLiquidityResponse, VlpConcentratedAddLiquidityResponse,
+            VlpConcentratedCollectFeesResponse, VlpConcentratedCollectProtocolFeesResponse,
+            VlpConcentratedRemoveLiquidityResponse, VlpRemoveLiquidityResponse, VlpSwapResponse,
         },
     },
     normalize::normalize_token_to_voucher,
@@ -29,11 +36,16 @@ use function_name::named;
 
 use crate::{
     execute::token::execute_transfer_voucher,
-    ibc::{self, receive::pool::ibc_execute_add_liquidity},
+    ibc::{
+        self,
+        receive::pool::{ibc_execute_add_concentrated_liquidity, ibc_execute_add_liquidity},
+    },
     query::query_token_metadata_by_denom,
     state::{
-        FUNDS_INFO, PENDING_REMOVE_LIQUIDITY, PENDING_SINGLE_SIDED_LIQUIDITY, PENDING_SWAPS,
-        TOKEN_VLPS, VIRTUAL_BALANCE_CONTRACT, VLPS,
+        CLP_POSITION_ID_VLP_MAP, CONCENTRATED_FUNDS_INFO, CONCENTRATED_VLPS, FUNDS_INFO,
+        PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
+        PENDING_CONCENTRATED_REMOVE_LIQUIDITY, PENDING_REMOVE_LIQUIDITY,
+        PENDING_SINGLE_SIDED_LIQUIDITY, PENDING_SWAPS, TOKEN_VLPS, VIRTUAL_BALANCE_CONTRACT, VLPS,
     },
 };
 
@@ -42,17 +54,18 @@ pub const VLP_POOL_REGISTER_REPLY_ID: u64 = 2;
 pub const ADD_LIQUIDITY_REPLY_ID: u64 = 3;
 pub const REMOVE_LIQUIDITY_REPLY_ID: u64 = 4;
 pub const SWAP_REPLY_ID: u64 = 5;
+pub const COLLECT_CONCENTRATED_REPLY_ID: u64 = 9;
 
 pub const VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID: u64 = 6;
 pub const ESCROW_BALANCE_INSTANTIATE_REPLY_ID: u64 = 7;
 
 pub const CROSS_CHAIN_RECEIVE_REPLY_ID: u64 = 8;
 
-pub const SINGLE_SIDED_SWAP_REPLY_ID: u64 = 9;
-pub const SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID: u64 = 10;
+pub const SINGLE_SIDED_SWAP_REPLY_ID: u64 = 10;
+pub const SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID: u64 = 11;
 
 pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::InstantiateError { err }),
         SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
@@ -65,6 +78,43 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
 
             let vlp_address = instantiate_data.contract_address;
             let vlp_address = deps.api.addr_validate(&vlp_address)?;
+            let data = instantiate_data.data.clone().unwrap_or_default();
+            if let Ok(pool_creation_response) =
+                from_json::<ConcentratedPoolCreationResponse>(data.clone())
+            {
+                for token in &pool_creation_response.pool_key.pair.get_vec_token() {
+                    let key = TOKEN_VLPS.key(token.clone());
+                    let mut existing_vlps = key.may_load(deps.storage)?.unwrap_or_default();
+                    existing_vlps.push(vlp_address.clone());
+                    key.save(deps.storage, &existing_vlps)?;
+                }
+                CONCENTRATED_VLPS.save(
+                    deps.storage,
+                    pool_creation_response.pool_key.to_map_key(),
+                    &vlp_address,
+                )?;
+
+                let funds_info = CONCENTRATED_FUNDS_INFO
+                    .may_load(deps.storage)?
+                    .ok_or(ContractError::InsufficientFunds {})?;
+                let response = ibc_execute_add_concentrated_liquidity(
+                    deps,
+                    euclid_ibc::router_ibc::RouterCrossChainConcentratedAddLiquidityExecuteMsg {
+                        sender: pool_creation_response.sender.clone(),
+                        pair: funds_info.pair_with_denom,
+                        pool_key: funds_info.pool_key,
+                        lower_tick_index: funds_info.lower_tick_index,
+                        upper_tick_index: funds_info.upper_tick_index,
+                        position_id: funds_info.position_id,
+                        slippage_tolerance_bps: funds_info.slippage_tolerance_bps,
+                        tx_id: pool_creation_response.tx_id.clone(),
+                    },
+                )?;
+                return Ok(response
+                    .add_attribute("action", "reply_vlp_instantiate")
+                    .add_attribute("pool_type", "concentrated")
+                    .add_attribute("vlp", vlp_address));
+            }
 
             let liquidity: msgs::vlp::base::GetLiquidityQueryResponse =
                 deps.querier.query_wasm_smart(
@@ -80,9 +130,7 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
             }
 
             VLPS.save(deps.storage, liquidity.pair.get_tupple(), &vlp_address)?;
-            let pool_creation_response = from_json::<PoolCreationResponse>(
-                instantiate_data.data.clone().unwrap_or_default(),
-            )?;
+            let pool_creation_response = from_json::<PoolCreationResponse>(data)?;
             let (funds, slippage_tolerance_bps) = FUNDS_INFO
                 .load(deps.storage)
                 .map_err(|_| ContractError::InsufficientFunds {})?;
@@ -97,6 +145,7 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
 
             Ok(response
                 .add_attribute("action", "reply_vlp_instantiate")
+                .add_attribute("pool_type", "classic")
                 .add_attribute("vlp", vlp_address))
         }
     }
@@ -104,14 +153,12 @@ pub fn on_vlp_instantiate_reply(deps: DepsMut, msg: Reply) -> Result<Response, C
 
 #[named]
 pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
+        SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
@@ -119,8 +166,36 @@ pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
                 parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
-            let pool_creation_response: PoolCreationResponse =
-                from_json(execute_data.data.unwrap_or_default())?;
+            let data = execute_data.data.unwrap_or_default();
+            if let Ok(pool_creation_response) =
+                from_json::<ConcentratedPoolCreationResponse>(data.clone())
+            {
+                let vlp_address = pool_creation_response.vlp_contract.clone();
+                let ack = AcknowledgementMsg::Ok(pool_creation_response.clone());
+                let mut response = Response::new();
+                if let Some(funds_info) = CONCENTRATED_FUNDS_INFO.may_load(deps.storage)? {
+                    response = ibc_execute_add_concentrated_liquidity(
+                        deps,
+                        euclid_ibc::router_ibc::RouterCrossChainConcentratedAddLiquidityExecuteMsg {
+                            sender: pool_creation_response.sender,
+                            pair: funds_info.pair_with_denom,
+                            pool_key: funds_info.pool_key,
+                            lower_tick_index: funds_info.lower_tick_index,
+                            upper_tick_index: funds_info.upper_tick_index,
+                            position_id: funds_info.position_id,
+                            slippage_tolerance_bps: funds_info.slippage_tolerance_bps,
+                            tx_id: pool_creation_response.tx_id,
+                        },
+                    )?;
+                }
+                return Ok(response
+                    .add_attribute("action", "reply_pool_register")
+                    .add_attribute("pool_type", "concentrated")
+                    .add_attribute("vlp", vlp_address)
+                    .set_data(to_json_binary(&ack)?));
+            }
+
+            let pool_creation_response: PoolCreationResponse = from_json(data)?;
             let vlp_address = pool_creation_response.vlp_contract.clone();
             let ack = AcknowledgementMsg::Ok(pool_creation_response.clone());
 
@@ -139,6 +214,7 @@ pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
 
             Ok(response
                 .add_attribute("action", "reply_pool_register")
+                .add_attribute("pool_type", "classic")
                 .add_attribute("vlp", vlp_address)
                 .set_data(to_json_binary(&ack)?))
         }
@@ -147,14 +223,12 @@ pub fn on_pool_register_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
 
 #[named]
 pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
+        SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
@@ -162,33 +236,47 @@ pub fn on_add_liquidity_reply(deps: DepsMut, msg: Reply) -> Result<Response, Con
                 parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
-            let liquidity_response: AddLiquidityResponse =
-                from_json(execute_data.data.unwrap_or_default())?;
+            let data = execute_data.data.unwrap_or_default();
+            if let Ok(liquidity_response) =
+                from_json::<VlpConcentratedAddLiquidityResponse>(data.clone())
+            {
+                let mut res = Response::new();
+                // Remove funds info if it exists
+                CONCENTRATED_FUNDS_INFO.remove(deps.storage);
+                let ack = AcknowledgementMsg::Ok(ConcentratedAddLiquidityResponse {
+                    position_id: liquidity_response.position_id,
+                    liquidity_delta: liquidity_response.liquidity_delta,
+                    vlp_address: liquidity_response.vlp_address.clone(),
+                    tx_id: liquidity_response.tx_id.clone(),
+                    sender: liquidity_response.sender.clone(),
+                });
+                res = res.set_data(to_json_binary(&ack)?);
+                return Ok(res
+                    .add_attribute("action", "reply_add_liquidity")
+                    .add_attribute("pool_type", "concentrated")
+                    .add_attribute("liquidity", format!("{liquidity_response:?}")));
+            }
+
+            let liquidity_response: VlpAddLiquidityResponse = from_json(data)?;
 
             let mut res = Response::new();
-            let funds = FUNDS_INFO.may_load(deps.storage)?;
-            match funds {
-                Some(_) => {
-                    let pool_response = PoolCreationResponse {
-                        mint_lp_tokens: liquidity_response.mint_lp_tokens,
-                        vlp_contract: liquidity_response.vlp_address.clone(),
-                        tx_id: liquidity_response.tx_id.clone(),
-                        sender: liquidity_response.sender.clone(),
-                    };
-                    FUNDS_INFO.remove(deps.storage);
+            // Remove funds info if it exists
+            FUNDS_INFO.remove(deps.storage);
 
-                    let ack = AcknowledgementMsg::Ok(pool_response);
-                    res = res.set_data(to_json_binary(&ack)?);
-                }
-                None => {
-                    let ack: AcknowledgementMsg<AddLiquidityResponse> =
-                        AcknowledgementMsg::Ok(liquidity_response.clone());
-                    res = res.set_data(to_json_binary(&ack)?);
-                }
-            }
+            let add_liquidity_response = AddLiquidityResponse {
+                mint_lp_tokens: liquidity_response.mint_lp_tokens,
+                vlp_address: liquidity_response.vlp_address.clone(),
+                tx_id: liquidity_response.tx_id.clone(),
+                sender: liquidity_response.sender.clone(),
+            };
+
+            let ack: AcknowledgementMsg<AddLiquidityResponse> =
+                AcknowledgementMsg::Ok(add_liquidity_response.clone());
+            res = res.set_data(to_json_binary(&ack)?);
 
             Ok(res
                 .add_attribute("action", "reply_add_liquidity")
+                .add_attribute("pool_type", "classic")
                 .add_attribute("liquidity", format!("{liquidity_response:?}")))
         }
     }
@@ -200,16 +288,14 @@ pub fn on_remove_liquidity_reply(
     _env: Env,
     msg: Reply,
 ) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
+        SubMsgResult::Ok(result) => {
             let response = Response::new().add_attribute("action", "reply_remove_liquidity");
 
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
@@ -217,8 +303,42 @@ pub fn on_remove_liquidity_reply(
                 parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
                     err: res.to_string(),
                 })?;
-            let vlp_liquidity_response: VlpRemoveLiquidityResponse =
-                from_json(execute_data.data.unwrap_or_default())?;
+            let data = execute_data.data.unwrap_or_default();
+            if let Ok(vlp_liquidity_response) =
+                from_json::<VlpConcentratedRemoveLiquidityResponse>(data.clone())
+            {
+                let req_key =
+                    PENDING_CONCENTRATED_REMOVE_LIQUIDITY.key(vlp_liquidity_response.tx_id.clone());
+                let _remove_liquidity_tx = req_key.load(deps.storage)?;
+                req_key.remove(deps.storage);
+
+                if vlp_liquidity_response.position_burned {
+                    CLP_POSITION_ID_VLP_MAP
+                        .remove(deps.storage, vlp_liquidity_response.position_id.u128());
+                }
+
+                let liquidity_response = ConcentratedRemoveLiquidityResponse {
+                    pool_key: vlp_liquidity_response.pool_key,
+                    position_id: vlp_liquidity_response.position_id,
+                    liquidity_removed: vlp_liquidity_response.liquidity_released,
+                    liquidity_delta: vlp_liquidity_response.liquidity_delta,
+                    liquidity_after: vlp_liquidity_response.liquidity_after,
+                    vlp_address: vlp_liquidity_response.vlp_address,
+                    tx_id: vlp_liquidity_response.tx_id,
+                    sender: vlp_liquidity_response.sender,
+                    position_burned: vlp_liquidity_response.position_burned,
+                };
+
+                let ack = AcknowledgementMsg::Ok(liquidity_response.clone());
+
+                return Ok(response
+                    .add_attribute("pool_type", "concentrated")
+                    .add_attribute("liquidity", format!("{liquidity_response:?}"))
+                    .add_attribute("lp_burned", liquidity_response.liquidity_delta.to_string())
+                    .set_data(to_json_binary(&ack)?));
+            }
+
+            let vlp_liquidity_response: VlpRemoveLiquidityResponse = from_json(data)?;
 
             let req_key = PENDING_REMOVE_LIQUIDITY.key(vlp_liquidity_response.tx_id.clone());
             let _remove_liquidity_tx = req_key.load(deps.storage)?;
@@ -233,6 +353,7 @@ pub fn on_remove_liquidity_reply(
             let ack = AcknowledgementMsg::Ok(liquidity_response.clone());
 
             Ok(response
+                .add_attribute("pool_type", "classic")
                 .add_attribute("liquidity", format!("{liquidity_response:?}"))
                 .add_attribute("lp_burned", liquidity_response.burn_lp_tokens.to_string())
                 .set_data(to_json_binary(&ack)?))
@@ -241,15 +362,92 @@ pub fn on_remove_liquidity_reply(
 }
 
 #[named]
-pub fn on_swap_reply(deps: &mut DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+pub fn on_collect_concentrated_reply(deps: DepsMut, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
+        SubMsgResult::Ok(result) => {
+            let response = Response::new().add_attribute("action", "reply_collect_concentrated");
+
+            #[allow(deprecated)]
+            let data = result.data.unwrap_or_default();
+
+            let execute_data =
+                parse_execute_response_data(&data).map_err(|res| ContractError::Generic {
+                    err: res.to_string(),
+                })?;
+            let data = execute_data.data.unwrap_or_default();
+
+            if let Ok(vlp_collect_response) =
+                from_json::<VlpConcentratedCollectFeesResponse>(data.clone())
+            {
+                let req_key =
+                    PENDING_CONCENTRATED_COLLECT_FEES.key(vlp_collect_response.tx_id.clone());
+                let _req = req_key.load(deps.storage)?;
+                req_key.remove(deps.storage);
+
+                let collect_response = ConcentratedCollectFeesResponse {
+                    pool_key: vlp_collect_response.pool_key,
+                    position_id: vlp_collect_response.position_id,
+                    amount_0: vlp_collect_response.amount_0,
+                    amount_1: vlp_collect_response.amount_1,
+                    vlp_address: vlp_collect_response.vlp_address,
+                    tx_id: vlp_collect_response.tx_id,
+                    sender: vlp_collect_response.sender,
+                    recipient: vlp_collect_response.recipient,
+                };
+                let ack = AcknowledgementMsg::Ok(collect_response.clone());
+
+                return Ok(response
+                    .add_attribute("collect_type", "position_fees")
+                    .add_attribute("amount_0", collect_response.amount_0)
+                    .add_attribute("amount_1", collect_response.amount_1)
+                    .set_data(to_json_binary(&ack)?));
+            }
+
+            if let Ok(vlp_collect_response) =
+                from_json::<VlpConcentratedCollectProtocolFeesResponse>(data.clone())
+            {
+                let req_key = PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES
+                    .key(vlp_collect_response.tx_id.clone());
+                let _req = req_key.load(deps.storage)?;
+                req_key.remove(deps.storage);
+
+                let collect_response = ConcentratedCollectProtocolFeesResponse {
+                    pool_key: vlp_collect_response.pool_key,
+                    amount_0: vlp_collect_response.amount_0,
+                    amount_1: vlp_collect_response.amount_1,
+                    vlp_address: vlp_collect_response.vlp_address,
+                    tx_id: vlp_collect_response.tx_id,
+                    sender: vlp_collect_response.sender,
+                    recipient: vlp_collect_response.recipient,
+                };
+                let ack = AcknowledgementMsg::Ok(collect_response.clone());
+
+                return Ok(response
+                    .add_attribute("collect_type", "protocol_fees")
+                    .add_attribute("amount_0", collect_response.amount_0)
+                    .add_attribute("amount_1", collect_response.amount_1)
+                    .set_data(to_json_binary(&ack)?));
+            }
+
+            Err(ContractError::new(
+                "invalid concentrated collect reply payload",
+            ))
+        }
+    }
+}
+
+#[named]
+pub fn on_swap_reply(deps: &mut DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
+    match msg.result {
+        SubMsgResult::Err(err) => Err(ContractError::Reply {
+            action: function_name!().to_string(),
+            err,
+        }),
+        SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
@@ -314,14 +512,12 @@ pub fn on_virtual_balance_instantiate_reply(
     deps: DepsMut,
     msg: Reply,
 ) -> Result<Response, ContractError> {
-    match msg.result.clone() {
+    match msg.result {
         SubMsgResult::Err(err) => Err(ContractError::Reply {
             action: function_name!().to_string(),
             err,
         }),
-        SubMsgResult::Ok(..) => {
-            let msg_clone = msg.clone();
-            let result = msg_clone.result.unwrap();
+        SubMsgResult::Ok(result) => {
             #[allow(deprecated)]
             let data = result.data.unwrap_or_default();
 
@@ -603,9 +799,13 @@ mod tests {
     use euclid::{
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
-        liquidity::AddLiquidityResponse,
-        msgs::vlp::base::{PoolCreationResponse, VlpRemoveLiquidityResponse, VlpSwapResponse},
-        token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenomAndAmount},
+        msgs::vlp::base::{
+            PoolCreationResponse, VlpAddLiquidityResponse, VlpRemoveLiquidityResponse,
+            VlpSwapResponse,
+        },
+        token::{
+            Pair, PairWithAmount, PairWithDenomAndAmount, Token, TokenType, TokenWithDenomAndAmount,
+        },
     };
     use euclid_ibc::router_ibc::{
         RouterCrossChainRemoveLiquidityExecuteMsg, RouterCrossChainSwapExecuteMsg,
@@ -641,6 +841,7 @@ mod tests {
             constant_product_vlp_code_id: 1,
             stable_vlp_code_id: 3,
             virtual_balance_code_id: 2,
+            concentrated_vlp_code_id: 4,
         };
         let sender = deps.api.addr_make("creator");
         let info = message_info(&sender, &[]);
@@ -821,8 +1022,9 @@ mod tests {
     // on_add_liquidity_reply — plain add-liquidity path (no FUNDS_INFO)
     // -----------------------------------------------------------------------
 
-    fn make_add_liquidity_response() -> AddLiquidityResponse {
-        AddLiquidityResponse {
+    fn make_add_liquidity_response(pair_with_amount: PairWithAmount) -> VlpAddLiquidityResponse {
+        VlpAddLiquidityResponse {
+            liquidity_added: pair_with_amount,
             mint_lp_tokens: Uint256::from(500u128),
             vlp_address: "vlp_contract".to_string(),
             tx_id: "tx-add-liq-1".to_string(),
@@ -837,7 +1039,16 @@ mod tests {
     fn test_add_liquidity_reply_no_funds_info_returns_add_liq_ack() {
         let mut deps = initialized();
 
-        let liq_response = make_add_liquidity_response();
+        let pair = Pair::new(
+            Token::create("aaa".to_string()).unwrap(),
+            Token::create("bbb".to_string()).unwrap(),
+        )
+        .unwrap();
+
+        let liq_response = make_add_liquidity_response(
+            pair.get_pair_with_amount(Uint256::from(100u128), Uint256::from(200u128))
+                .unwrap(),
+        );
         let inner_json = cosmwasm_std::to_json_binary(&liq_response).unwrap();
         let proto_bytes = encode_execute_response(&inner_json);
         let reply = ok_reply(ADD_LIQUIDITY_REPLY_ID, proto_bytes);
@@ -858,7 +1069,7 @@ mod tests {
     }
 
     #[test]
-    fn test_add_liquidity_reply_with_funds_info_builds_pool_creation_ack_and_clears_funds_info() {
+    fn test_add_liquidity_reply_with_funds_info_builds_add_liquidity_ack_and_clears_funds_info() {
         let mut deps = initialized();
 
         // Seed FUNDS_INFO (simulates pool-creation path)
@@ -877,10 +1088,11 @@ mod tests {
             },
         };
         FUNDS_INFO
-            .save(deps.as_mut().storage, &(pair_with_denom, 50u64))
+            .save(deps.as_mut().storage, &(pair_with_denom.clone(), 50u64))
             .unwrap();
 
-        let liq_response = make_add_liquidity_response();
+        let liq_response =
+            make_add_liquidity_response(pair_with_denom.get_pair_with_amount().unwrap());
         let inner_json = cosmwasm_std::to_json_binary(&liq_response).unwrap();
         let proto_bytes = encode_execute_response(&inner_json);
         let reply = ok_reply(ADD_LIQUIDITY_REPLY_ID, proto_bytes);
@@ -974,7 +1186,7 @@ mod tests {
         // Attribute check
         assert_eq!(res.attributes[0], attr("action", "reply_remove_liquidity"));
         assert_eq!(
-            res.attributes[2],
+            res.attributes[3],
             attr("lp_burned", vlp_response.burn_lp_tokens.to_string())
         );
 
@@ -1254,7 +1466,7 @@ mod tests {
         let res = on_pool_register_reply(deps.as_mut(), reply).unwrap();
 
         assert_eq!(res.attributes[0], attr("action", "reply_pool_register"));
-        assert_eq!(res.attributes[1], attr("vlp", "vlp_addr"));
+        assert_eq!(res.attributes[2], attr("vlp", "vlp_addr"));
         // Ack data is set
         assert!(res.data.is_some());
         // No submessages — ibc_execute_add_liquidity not triggered
@@ -1350,6 +1562,7 @@ mod tests {
             from_json, to_json_binary, ContractResult, CosmosMsg, SystemResult, WasmMsg, WasmQuery,
         };
         use euclid::{
+            liquidity::AddLiquidityResponse,
             msgs::virtual_balance::msg::{
                 ExecuteMsg as VirtualBalanceMsg, GetTokenMetadataByDenomResponse,
                 QueryMsg as VirtualBalanceQueryMsg,
@@ -1448,6 +1661,7 @@ mod tests {
                 swaps: vec![NextSwapPair {
                     token_in: token_aaa(),
                     token_out: asset_out,
+                    pool_key: None,
                     test_fail: None,
                 }],
                 min_lp_out: Uint256::from(min_lp_out),

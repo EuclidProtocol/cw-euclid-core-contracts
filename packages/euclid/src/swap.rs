@@ -2,6 +2,7 @@ use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, Uint256};
 
 use crate::{
+    msgs::vlp::base::PoolKey,
     recipient::Recipient,
     token::{Token, TokenWithDenom},
 };
@@ -39,6 +40,8 @@ pub struct NextSwapVlp {
 pub struct NextSwapPair {
     pub token_in: Token,
     pub token_out: Token,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pool_key: Option<PoolKey>,
     pub test_fail: Option<bool>,
 }
 

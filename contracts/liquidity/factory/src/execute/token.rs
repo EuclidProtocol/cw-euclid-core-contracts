@@ -271,7 +271,9 @@ pub fn execute_deposit_token(
         } => {
             ensure!(
                 info.sender.as_str() == contract_address,
-                ContractError::Unauthorized {}
+                ContractError::new(
+                    "Sender address does not match contract address for smart token"
+                )
             );
         }
         TokenType::Voucher { .. } => {}

@@ -199,6 +199,7 @@ pub fn execute_receive_acknowledgement(
         source_port == format!("vsl.{router}", router = state.router_contract),
         ContractError::new("Invalid source port")
     );
+
     let (existing_request, sender) =
         remove_pending_packet_and_decrement_count(deps.storage, sequence)?;
 

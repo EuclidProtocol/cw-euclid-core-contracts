@@ -1,12 +1,14 @@
 use std::ops::Add;
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, DepsMut, Env, SubMsg, Uint256, WasmMsg};
+use cosmwasm_std::{
+    ensure, to_json_binary, Addr, Binary, DepsMut, Env, SubMsg, Uint128, Uint256, WasmMsg,
+};
 use euclid::{
     chain::{ChainType, ChainUid},
     cross_chain_user::CrossChainUser,
     error::ContractError,
-    msgs::vlp::base::PoolConfig,
+    msgs::vlp::base::{PoolConfig, PoolKey},
     msgs::{factory, router},
     recipient::Recipient,
     swap::NextSwapPair,
@@ -48,6 +50,7 @@ pub enum RouterCrossChainExecuteMsg {
         // User will provide this data
         slippage_tolerance_bps: u64,
     },
+    RequestConcentratedPoolCreation(RouterCrossChainConcentratedRequestPoolCreationExecuteMsg),
     AddLiquidity {
         // Factory will set this using info.sender
         sender: CrossChainUser,
@@ -60,9 +63,13 @@ pub enum RouterCrossChainExecuteMsg {
         // Unique per tx
         tx_id: String,
     },
+    AddConcentratedLiquidity(RouterCrossChainConcentratedAddLiquidityExecuteMsg),
 
     // Remove liquidity from a chain pool to VLP
     RemoveLiquidity(RouterCrossChainRemoveLiquidityExecuteMsg),
+    RemoveConcentratedLiquidity(RouterCrossChainConcentratedRemoveLiquidityExecuteMsg),
+    CollectConcentratedFees(RouterCrossChainConcentratedCollectFeesExecuteMsg),
+    CollectConcentratedProtocolFees(RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg),
 
     // Swap tokens on VLP
     Swap(RouterCrossChainSwapExecuteMsg),
@@ -80,11 +87,38 @@ impl RouterCrossChainExecuteMsg {
             Self::DepositToken(msg) => msg.tx_id.clone(),
             Self::TransferVoucher(msg) => msg.tx_id.clone(),
             Self::RequestPoolCreation { tx_id, .. } => tx_id.clone(),
+            Self::RequestConcentratedPoolCreation(msg) => msg.tx_id.clone(),
             Self::AddLiquidity { tx_id, .. } => tx_id.clone(),
+            Self::AddConcentratedLiquidity(msg) => msg.tx_id.clone(),
             Self::RemoveLiquidity(msg) => msg.tx_id.clone(),
+            Self::RemoveConcentratedLiquidity(msg) => msg.tx_id.clone(),
+            Self::CollectConcentratedFees(msg) => msg.tx_id.clone(),
+            Self::CollectConcentratedProtocolFees(msg) => msg.tx_id.clone(),
             Self::Swap(msg) => msg.tx_id.clone(),
             Self::SingleSidedAddLiquidity(msg) => msg.tx_id.clone(),
         }
+    }
+
+    /// Returns true if `self` is a pool-related variant currently owned by
+    /// `pool_factory`. Used in two places that MUST stay in lockstep:
+    ///   1. The inbound ack dispatcher on main factory, to decide whether to
+    ///      forward an ack to `pool_factory::OnPoolAck`.
+    ///   2. The outbound reply handler on main factory
+    ///      (`on_pool_factory_delegate_reply`), to reject any non-pool packet
+    ///      returned by `pool_factory` as defence in depth.
+    ///
+    /// Extended slice-by-slice as additional pool flows are delegated. Adding
+    /// a new variant here without also retrofitting both sites will cause
+    /// either an unrouted ack (false negative) or an unsendable packet
+    /// (false positive); reviewers should confirm both sites match.
+    pub fn is_pool_variant(&self) -> bool {
+        matches!(
+            self,
+            Self::RequestPoolCreation { .. }
+                | Self::RequestConcentratedPoolCreation(_)
+                | Self::AddLiquidity { .. }
+                | Self::RemoveLiquidity(_)
+        )
     }
 
     /// Returns a reference to the sender CrossChainUser from any variant.
@@ -98,6 +132,11 @@ impl RouterCrossChainExecuteMsg {
             Self::AddLiquidity { sender, .. } => sender,
             Self::RemoveLiquidity(msg) => &msg.sender,
             Self::Swap(msg) => &msg.sender,
+            Self::RequestConcentratedPoolCreation(msg) => &msg.sender,
+            Self::AddConcentratedLiquidity(msg) => &msg.sender,
+            Self::RemoveConcentratedLiquidity(msg) => &msg.sender,
+            Self::CollectConcentratedFees(msg) => &msg.sender,
+            Self::CollectConcentratedProtocolFees(msg) => &msg.sender,
             Self::SingleSidedAddLiquidity(msg) => &msg.sender,
         }
     }
@@ -187,6 +226,58 @@ pub struct RouterCrossChainRemoveLiquidityExecuteMsg {
     pub pair: Pair,
     pub recipient: CrossChainUser,
     // Unique per tx
+    pub tx_id: String,
+}
+
+#[cw_serde]
+pub struct RouterCrossChainConcentratedRequestPoolCreationExecuteMsg {
+    pub sender: CrossChainUser,
+    pub tx_id: String,
+    pub pair: PairWithDenomAndAmount,
+    pub pool_key: PoolKey,
+    pub slippage_tolerance_bps: u64,
+    /// Initial tick for the pool price. `None` means tick 0 (1:1 price).
+    pub initial_tick: Option<i64>,
+}
+
+#[cw_serde]
+pub struct RouterCrossChainConcentratedAddLiquidityExecuteMsg {
+    pub sender: CrossChainUser,
+    pub pair: PairWithDenomAndAmount,
+    pub pool_key: PoolKey,
+    pub lower_tick_index: i64,
+    pub upper_tick_index: i64,
+    pub position_id: Option<Uint128>,
+    pub slippage_tolerance_bps: u64,
+    pub tx_id: String,
+}
+
+#[cw_serde]
+pub struct RouterCrossChainConcentratedRemoveLiquidityExecuteMsg {
+    pub sender: CrossChainUser,
+    pub pool_key: PoolKey,
+    pub position_id: Uint128,
+    pub liquidity_delta: Uint128,
+    pub recipient: CrossChainUser,
+    pub tx_id: String,
+}
+
+#[cw_serde]
+pub struct RouterCrossChainConcentratedCollectFeesExecuteMsg {
+    pub sender: CrossChainUser,
+    pub pool_key: PoolKey,
+    pub position_id: Uint128,
+    pub recipient: CrossChainUser,
+    pub tx_id: String,
+}
+
+#[cw_serde]
+pub struct RouterCrossChainConcentratedCollectProtocolFeesExecuteMsg {
+    pub sender: CrossChainUser,
+    pub pool_key: PoolKey,
+    pub recipient: CrossChainUser,
+    pub amount_0_requested: Uint128,
+    pub amount_1_requested: Uint128,
     pub tx_id: String,
 }
 

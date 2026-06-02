@@ -1,7 +1,7 @@
 use crate::contract::instantiate;
 use crate::ibc::receive::reusable_internal_call;
 
-use crate::state::{CHAIN_UID_TO_CHAIN, VIRTUAL_BALANCE_CONTRACT, VLPS};
+use crate::state::{CHAIN_UID_TO_CHAIN, CONCENTRATED_VLPS, VIRTUAL_BALANCE_CONTRACT, VLPS};
 
 use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env, MockQuerier};
 use cosmwasm_std::{
@@ -42,6 +42,7 @@ pub const TEST_DEFAULT_FEE_RECIPIENT: &str = "default_fee_recipient";
 
 pub(crate) fn init(deps: DepsMut, info: MessageInfo) -> Response {
     let msg = InstantiateMsg {
+        concentrated_vlp_code_id: 4,
         relayer_contract: Addr::unchecked(TEST_RELAYER),
         release_fee_recipient: Addr::unchecked(TEST_RELEASE_FEE_RECIPIENT),
         default_fee_recipient: Addr::unchecked(TEST_DEFAULT_FEE_RECIPIENT),
@@ -176,6 +177,106 @@ pub(crate) fn seed_vlp_aaa_bbb(deps: &mut MockDeps) {
 // -----------------------------------------------------------------------
 // Swap dispatch
 // -----------------------------------------------------------------------
+
+/// Helper: seed CONCENTRATED_VLPS with a pool_key → vlp_addr mapping.
+pub(crate) fn seed_concentrated_vlp(
+    deps: &mut MockDeps,
+    pool_key: &euclid::msgs::vlp::base::PoolKey,
+    vlp_addr: &str,
+) {
+    CONCENTRATED_VLPS
+        .save(
+            deps.as_mut().storage,
+            pool_key.to_map_key(),
+            &Addr::unchecked(vlp_addr),
+        )
+        .unwrap();
+}
+
+/// Make a PairWithDenomAndAmount with configurable decimals per token.
+pub(crate) fn make_pool_pair_with_decimals(
+    token_a: &str,
+    denom_a: &str,
+    decimals_a: u32,
+    amount_a: u128,
+    token_b: &str,
+    denom_b: &str,
+    decimals_b: u32,
+    amount_b: u128,
+) -> PairWithDenomAndAmount {
+    PairWithDenomAndAmount {
+        token_1: TokenWithDenomAndAmount {
+            token: Token::create(token_a.to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: denom_a.to_string(),
+                decimals: Some(decimals_a),
+            },
+            amount: Uint256::from(amount_a),
+        },
+        token_2: TokenWithDenomAndAmount {
+            token: Token::create(token_b.to_string()).unwrap(),
+            token_type: TokenType::Native {
+                denom: denom_b.to_string(),
+                decimals: Some(decimals_b),
+            },
+            amount: Uint256::from(amount_b),
+        },
+    }
+}
+
+/// Build a MockDeps with a mock querier that returns configurable decimals
+/// for GetTokenMetadataByDenom queries. Maps token_id → decimals.
+pub(crate) fn make_clp_deps_with_decimals(decimals_map: Vec<(String, u32)>) -> MockDeps {
+    use cosmwasm_std::from_json;
+    use euclid::msgs::virtual_balance::msg::{
+        GetTokenMetadataByDenomResponse, QueryMsg as VirtualBalanceQueryMsg,
+    };
+    use euclid::token::TokenMetadata;
+
+    let mut deps = mock_dependencies();
+    let creator = deps.api.addr_make("creator");
+    init(deps.as_mut(), message_info(&creator, &[]));
+
+    seed_virtual_balance(&mut deps);
+
+    deps.querier.update_wasm(move |q| match q {
+        WasmQuery::Smart { contract_addr, msg } if contract_addr == TEST_VIRTUAL_BALANCE => {
+            let parsed: VirtualBalanceQueryMsg = from_json(msg).unwrap();
+            match parsed {
+                VirtualBalanceQueryMsg::GetTokenMetadataByDenom {
+                    token_id,
+                    chain_uid,
+                    token_type,
+                } => {
+                    let decimals = decimals_map
+                        .iter()
+                        .find(|(id, _)| *id == token_id)
+                        .map(|(_, d)| *d)
+                        .unwrap_or(6);
+                    let token_type_with_decimals = match token_type {
+                        TokenType::Native { denom, .. } => TokenType::Native {
+                            denom,
+                            decimals: Some(decimals),
+                        },
+                        other => other,
+                    };
+                    let resp = GetTokenMetadataByDenomResponse {
+                        metadata: TokenMetadata {
+                            token: Token::create(token_id).unwrap(),
+                            chain_uid,
+                            token_type: token_type_with_decimals,
+                            allowed: true,
+                        },
+                    };
+                    SystemResult::Ok(ContractResult::Ok(to_json_binary(&resp).unwrap()))
+                }
+                other => panic!("unexpected virtual_balance query: {other:?}"),
+            }
+        }
+        _ => panic!("unexpected wasm query in clp test"),
+    });
+    deps
+}
 
 pub(crate) fn make_swap_deps_with_mock_querier(amount_out: u128) -> MockDeps {
     use cosmwasm_std::from_json;

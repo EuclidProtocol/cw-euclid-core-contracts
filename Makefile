@@ -5,6 +5,18 @@ compile:
 		--mount type=volume,source=registry_cache,target=/usr/local/cargo/registry \
 		cosmwasm/optimizer:0.16.0
 
+.PHONY: fuzz
+fuzz:
+	cargo test -p tests-fuzz -- --test-threads=1 --nocapture
+
+.PHONY: fuzz-math
+fuzz-math:
+	cargo test -p tests-fuzz -- math:: --nocapture
+
+.PHONY: fuzz-endurance
+fuzz-endurance:
+	cargo test -p tests-fuzz -- endurance --ignored --test-threads=1 --nocapture
+
 .PHONY: proto
 proto:
 	@echo "Generating JSON schemas..."

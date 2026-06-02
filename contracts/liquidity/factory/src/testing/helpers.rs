@@ -50,6 +50,7 @@ pub fn init(deps: &mut MockDeps) -> Response {
         chain_uid: ChainUid::create(TEST_CHAIN_UID.to_string()).unwrap(),
         escrow_code_id: 10,
         lp_code_id: 11,
+        position_token_code_id: 12,
         is_native: false,
         relayer_contract: relayer,
         rate_limit_fee_recipient,

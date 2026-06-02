@@ -49,3 +49,21 @@ pub fn factory_modes(
     mode: FactorySetupMode,
 ) {
 }
+
+#[template]
+#[rstest]
+pub fn clp_matrix(
+    #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+    mode: FactorySetupMode,
+    #[values((6, 6), (6, 18), (8, 6))] decimal_pair: (u32, u32),
+) {
+}
+
+#[template]
+#[rstest]
+pub fn clp_matrix_full(
+    #[values(FactorySetupMode::Native, FactorySetupMode::Ibc, FactorySetupMode::Evm)]
+    mode: FactorySetupMode,
+    #[values((0, 6), (6, 6), (6, 18), (8, 6), (18, 18), (0, 24))] decimal_pair: (u32, u32),
+) {
+}

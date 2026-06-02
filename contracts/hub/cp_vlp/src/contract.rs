@@ -13,8 +13,8 @@ use euclid::{
     },
 };
 use euclid_pool::{
-    add_liquidity, execute_swap, register_pool, remove_liquidity, update_admin, update_fee,
-    SwapCalculationMethod,
+    common::{register_pool, remove_liquidity, update_admin, update_fee},
+    cp::{add_liquidity, execute_swap},
 };
 
 use crate::{
@@ -73,11 +73,11 @@ pub fn instantiate(
                     info.clone(),
                     &STATE,
                     &CHAIN_LP_TOKENS,
-                    None,
                     register_pool_msg.sender,
                     register_pool_msg.pair,
                     register_pool_msg.tx_id,
-                ),
+                )
+                .map(|r| r.add_attribute("pool_type", "constant_product")),
                 _ => Err(ContractError::Unauthorized {}),
             })?;
 
@@ -104,11 +104,11 @@ pub fn execute(
             info,
             &STATE,
             &CHAIN_LP_TOKENS,
-            None,
             register_pool_msg.sender,
             register_pool_msg.pair,
             register_pool_msg.tx_id,
-        ),
+        )
+        .map(|r| r.add_attribute("pool_type", "constant_product")),
         ExecuteMsg::AddLiquidity(add_liquidity_msg) => add_liquidity(
             deps,
             env,
@@ -120,7 +120,6 @@ pub fn execute(
             add_liquidity_msg.sender,
             add_liquidity_msg.liquidity,
             add_liquidity_msg.slippage_tolerance_bps,
-            None,
             add_liquidity_msg.tx_id,
         ),
         ExecuteMsg::RemoveLiquidity(remove_liquidity_msg) => remove_liquidity(
@@ -146,8 +145,8 @@ pub fn execute(
             swap_msg.min_token_out,
             swap_msg.tx_id,
             swap_msg.next_swaps,
-            SwapCalculationMethod::Regular,
             swap_msg.test_fail,
+            swap_msg.euclid_fee_override,
         ),
         ExecuteMsg::UpdateFee {
             lp_fee_bps,
@@ -173,9 +172,13 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
     match msg {
         QueryMsg::State {} => query_state(deps),
         QueryMsg::GetAdmin {} => query_admin(deps),
-        QueryMsg::SimulateSwap(msg) => {
-            query_simulate_swap(deps, msg.asset, msg.asset_amount, msg.swaps)
-        }
+        QueryMsg::SimulateSwap(msg) => query_simulate_swap(
+            deps,
+            msg.asset,
+            msg.asset_amount,
+            msg.swaps,
+            msg.euclid_fee_override,
+        ),
         QueryMsg::Liquidity {} => query_liquidity(deps, env),
         QueryMsg::Fee {} => query_fee(deps),
         QueryMsg::TotalFeesCollected {} => query_total_fees_collected(deps),
@@ -724,6 +727,7 @@ mod tests {
             min_token_out: Uint256::zero(),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         });
         let res = execute(deps.as_mut(), env, info, swap_msg).unwrap();
         assert!(res.messages.len() >= 2);
@@ -779,6 +783,7 @@ mod tests {
             min_token_out: Uint256::zero(),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         });
         let err = execute(deps.as_mut(), env, info, swap_msg).unwrap_err();
         assert_eq!(err, ContractError::ZeroAssetAmount {});
@@ -827,6 +832,7 @@ mod tests {
             min_token_out: Uint256::from(999_999_999u128),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         });
         let err = execute(deps.as_mut(), env, info, swap_msg).unwrap_err();
         assert!(matches!(err, ContractError::SlippageExceeded { .. }));
@@ -863,6 +869,7 @@ mod tests {
             min_token_out: Uint256::zero(),
             next_swaps: vec![],
             test_fail: None,
+            euclid_fee_override: None,
         });
         let err = execute(deps.as_mut(), env, info, swap_msg).unwrap_err();
         assert_eq!(err, ContractError::AssetDoesNotExist {});
@@ -912,6 +919,7 @@ mod tests {
             min_token_out: Uint256::zero(),
             next_swaps: vec![],
             test_fail: Some(true),
+            euclid_fee_override: None,
         });
         let err = execute(deps.as_mut(), env, info, swap_msg).unwrap_err();
         assert_eq!(err, ContractError::new("Force fail flag"));
@@ -1282,6 +1290,7 @@ mod tests {
                 min_token_out: Uint256::zero(),
                 next_swaps: vec![],
                 test_fail: None,
+                euclid_fee_override: None,
             }),
         )
         .unwrap();
@@ -1345,6 +1354,7 @@ mod tests {
                     min_token_out: Uint256::zero(),
                     next_swaps: vec![],
                     test_fail: None,
+                    euclid_fee_override: None,
                 }),
             )
             .unwrap();

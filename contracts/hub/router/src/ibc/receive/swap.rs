@@ -15,6 +15,7 @@ use euclid::{
 use euclid_ibc::router_ibc::RouterCrossChainSwapExecuteMsg;
 
 use crate::{
+    helpers::euclid_fee_override::get_euclid_fee_override,
     query::{query_token_metadata_by_denom, validate_swap_pairs},
     reply::SWAP_REPLY_ID,
     state::{PENDING_SWAPS, VIRTUAL_BALANCE_CONTRACT},
@@ -59,6 +60,13 @@ pub fn ibc_execute_swap(
 
     let sender = msg.sender;
 
+    // Resolve the swapping wallet's Euclid-fee override once, at this single
+    // chokepoint, and stamp it onto both the slippage pre-check simulation and
+    // the outgoing swap message. Native and IBC swaps both converge here, so
+    // both inherit the override identically — and the pre-check sees the same
+    // fee execution will charge.
+    let euclid_fee_override = get_euclid_fee_override(deps.storage, &sender)?;
+
     let virtual_balance_address = VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?;
 
     let swap_vlps = validate_swap_pairs(deps.as_ref(), &msg.swaps);
@@ -96,6 +104,7 @@ pub fn ibc_execute_swap(
         asset: msg.asset_in.token.clone(),
         asset_amount: normalized_amount_in,
         swaps: next_swaps.to_vec(),
+        euclid_fee_override,
     });
 
     let simulate_swap_res: euclid::msgs::vlp::base::GetSwapQueryResponse = deps
@@ -220,6 +229,7 @@ pub fn ibc_execute_swap(
         next_swaps: next_swaps.to_vec(),
         tx_id: msg.tx_id.clone(),
         test_fail: first_swap.test_fail,
+        euclid_fee_override,
     });
 
     let msg = WasmMsg::Execute {
@@ -268,6 +278,7 @@ mod tests {
                 token_in: token_a,
                 token_out: token_b,
                 test_fail: None,
+                pool_key: None,
             }],
             recipients: vec![],
             partner_fee_amount: Uint256::zero(),

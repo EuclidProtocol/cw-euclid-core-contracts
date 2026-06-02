@@ -4,11 +4,13 @@ use euclid::{
     chain::{ChainType, CosmosChain},
     error::ContractError,
     msgs::factory::{
-        AllPoolsResponse, AllTokensResponse, FeeBracket, GetEscrowResponse, GetLPTokenResponse,
-        GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse,
-        GetPendingSingleSidedLiquidityResponse, GetPendingSwapsResponse, GetRateLimitStateResponse,
-        GetUserRateLimitResponse, GetVlpResponse, PartnerFeesCollectedPerDenomResponse,
-        PartnerFeesCollectedResponse, PoolVlpResponse, StateResponse,
+        AllConcentratedPoolsResponse, AllPoolsResponse, AllTokensResponse,
+        ConcentratedPoolVlpResponse, FeeBracket, GetConcentratedVlpResponse, GetEscrowResponse,
+        GetLPTokenResponse, GetPendingLiquidityResponse, GetPendingRemoveLiquidityResponse,
+        GetPendingSingleSidedLiquidityResponse, GetPendingSwapsResponse,
+        GetPositionTokenContractResponse, GetRateLimitStateResponse, GetUserRateLimitResponse,
+        GetVlpResponse, PartnerFeesCollectedPerDenomResponse, PartnerFeesCollectedResponse,
+        PoolVlpResponse, StateResponse,
     },
     token::{Pair, Token},
     utils::pagination::Pagination,
@@ -18,9 +20,14 @@ use crate::{
     rate_limit::{RATE_LIMIT_STATE, USER_FREE_LIMIT, USER_PENDING_PACKETS_COUNT},
     state::{
         ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_REMOVE_LIQUIDITY,
-        PENDING_SINGLE_SIDED_LIQUIDITY, PENDING_SWAPS, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_TOKEN,
+        PENDING_SINGLE_SIDED_LIQUIDITY, PENDING_SWAPS, POOL_FACTORY_ADDRESS,
+        POOL_FACTORY_INITIALISED, POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW,
+        VLP_TO_LP_TOKEN,
     },
 };
+use euclid::admin::AdminType;
+use euclid::msgs::factory::{QueryAdminRoleResponse, QueryPoolFactoryAddressResponse};
+use euclid::msgs::vlp::base::PoolKey;
 
 // Returns the VLP address
 pub fn get_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
@@ -83,6 +90,12 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         is_native: state.is_native,
     })?)
 }
+
+pub fn get_position_token_contract(deps: Deps) -> Result<Binary, ContractError> {
+    Ok(to_json_binary(&GetPositionTokenContractResponse {
+        position_token_contract: POSITION_TOKEN_CONTRACT.may_load(deps.storage)?,
+    })?)
+}
 pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
     let pools: Vec<PoolVlpResponse> = PAIR_TO_VLP
         .range(deps.storage, None, None, Order::Ascending)
@@ -96,6 +109,40 @@ pub fn query_all_pools(deps: Deps) -> Result<Binary, ContractError> {
         .collect::<Result<_, ContractError>>()?;
 
     to_json_binary(&AllPoolsResponse { pools }).map_err(Into::into)
+}
+
+pub fn get_concentrated_vlp(
+    deps: Deps,
+    pool_key: euclid::msgs::vlp::base::PoolKey,
+) -> Result<Binary, ContractError> {
+    let vlp_address = POOL_KEY_TO_VLP.load(deps.storage, pool_key.to_map_key())?;
+    Ok(to_json_binary(&GetConcentratedVlpResponse {
+        vlp_address,
+        pool_key,
+    })?)
+}
+
+pub fn query_all_concentrated_pools(deps: Deps) -> Result<Binary, ContractError> {
+    let pools: Vec<ConcentratedPoolVlpResponse> = POOL_KEY_TO_VLP
+        .range(deps.storage, None, None, Order::Ascending)
+        .map(|item| {
+            let (key, vlp) = item?;
+            let (token_1, token_2, fee_tier_bps, tick_spacing) = PoolKey::parse_map_key(&key)
+                .ok_or(ContractError::new("invalid concentrated pool key in state"))?;
+            Ok(ConcentratedPoolVlpResponse {
+                pool_key: euclid::msgs::vlp::base::PoolKey {
+                    pair: Pair::new(Token::create(token_1)?, Token::create(token_2)?)?,
+                    pool_type: euclid::msgs::vlp::base::PoolType::Concentrated {
+                        fee_tier_bps,
+                        tick_spacing,
+                    },
+                },
+                vlp,
+            })
+        })
+        .collect::<Result<_, ContractError>>()?;
+
+    to_json_binary(&AllConcentratedPoolsResponse { pools }).map_err(Into::into)
 }
 
 pub fn query_all_tokens(deps: Deps) -> Result<Binary, ContractError> {
@@ -122,8 +169,8 @@ pub fn pending_swaps(
         .range(deps.storage, min, max, Order::Ascending)
         .skip(pagination.skip.unwrap_or(0) as usize)
         .take(pagination.limit.unwrap_or(10) as usize)
-        .map(|k| k.unwrap().1)
-        .collect();
+        .map(|k| -> Result<_, ContractError> { Ok(k?.1) })
+        .collect::<Result<Vec<_>, _>>()?;
 
     Ok(to_json_binary(&GetPendingSwapsResponse { pending_swaps })?)
 }
@@ -231,6 +278,27 @@ pub fn get_chain_type(deps: Deps, env: &Env) -> Result<ChainType, ContractError>
             chain_id: env.block.chain_id.clone(),
         }))
     }
+}
+
+pub fn query_admin_role(deps: Deps, addr: Addr, role: AdminType) -> Result<Binary, ContractError> {
+    let admins = ADMIN.load(deps.storage)?;
+    let has_role = match role {
+        AdminType::GeneralAdmin => admins.general_admin == addr,
+        AdminType::FeeAdmin => admins.fee_admin == addr,
+        AdminType::MigrationAdmin => admins.migration_admin == addr,
+    };
+    Ok(to_json_binary(&QueryAdminRoleResponse { has_role })?)
+}
+
+pub fn query_pool_factory_address(deps: Deps) -> Result<Binary, ContractError> {
+    let pool_factory_address = POOL_FACTORY_ADDRESS.may_load(deps.storage)?;
+    let initialised = POOL_FACTORY_INITIALISED
+        .may_load(deps.storage)?
+        .unwrap_or(false);
+    Ok(to_json_binary(&QueryPoolFactoryAddressResponse {
+        pool_factory_address,
+        initialised,
+    })?)
 }
 
 #[cfg(test)]
@@ -546,6 +614,7 @@ mod tests {
             chain_uid: ChainUid::create(TEST_CHAIN_UID.to_string()).unwrap(),
             escrow_code_id: 10,
             lp_code_id: 11,
+            position_token_code_id: 12,
             is_native: true,
             relayer_contract: Addr::unchecked(TEST_RELAYER),
             rate_limit_fee_recipient: Addr::unchecked(TEST_RATE_LIMIT_FEE_RECIPIENT),

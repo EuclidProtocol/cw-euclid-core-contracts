@@ -1,12 +1,14 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Int256, Uint512};
+use cosmwasm_std::{Addr, Int256, Uint128, Uint512};
 use cw_storage_plus::{Item, Map};
 use euclid::{
     admin::EuclidAdmin,
     chain::ChainUid,
+    cross_chain_user::CrossChainUser,
     deposit::DepositTokenRequest,
     fee::DenomFees,
     liquidity::{AddLiquidityRequest, RemoveLiquidityRequest, SingleSidedLiquidityRequest},
+    msgs::vlp::base::PoolKey,
     swap::SwapRequest,
     token::{PairWithDenomAndAmount, Token, TokenWithDenom, TokenWithDenomAndAmount},
 };
@@ -20,6 +22,8 @@ pub struct State {
     pub escrow_code_id: u64,
     // LP Token Code ID
     pub lp_code_id: u64,
+    // Position Token Code ID
+    pub position_token_code_id: u64,
     // The Unique Chain Identifier
     // THIS IS DIFFERENT THAN THE CHAIN_ID OF THE CHAIN, THIS REPRESENTS A UNIQUE IDENTIFIER FOR THE CHAIN
     // IN THE EUCLID ECOSYSTEM
@@ -45,15 +49,27 @@ pub const FEE_STATE: Item<FeeState> = Item::new("fee_state");
 
 // Map Pair to vlp address
 pub const PAIR_TO_VLP: Map<(String, String), String> = Map::new("pair_to_vlp");
+// Map pool key to vlp address - for concentrated pools
+pub const POOL_KEY_TO_VLP: Map<String, String> = Map::new("pool_key_to_vlp");
 
-// Map vlp to LP Allocations
+// Map vlp to LP Allocations. (Might not be needed anymore as LP token will have this data or can be updated to store this data)
 pub const VLP_TO_LP_SHARES: Map<String, Int256> = Map::new("vlp_to_lp_shares");
 
 // New Factory states
 pub const TOKEN_TO_ESCROW: Map<Token, Addr> = Map::new("token_to_escrow");
 
-// New LP Token states
+// New LP Token states. Only applicable for constant product and stable pools
 pub const VLP_TO_LP_TOKEN: Map<String, Addr> = Map::new("vlp_to_lp_token");
+
+// Common position token contract for all concentrated pools
+pub const POSITION_TOKEN_CONTRACT: Item<Addr> = Item::new("position_token_contract");
+
+// Address of the pool_factory companion contract on this chain. Written by
+// either the Sirius drain-and-cut migration or `SetPoolFactory` on a fresh
+// chain. While `POOL_FACTORY_INITIALISED == false`, main Factory keeps owning
+// the pool code paths; once flipped, pool ops delegate to this address.
+pub const POOL_FACTORY_ADDRESS: Item<Addr> = Item::new("pool_factory_address");
+pub const POOL_FACTORY_INITIALISED: Item<bool> = Item::new("pool_factory_initialised");
 
 #[cw_serde]
 pub struct PoolCreateRequest {
@@ -91,6 +107,67 @@ pub const PENDING_ADD_LIQUIDITY: Map<(Addr, String), AddLiquidityRequest> =
 pub const PENDING_REMOVE_LIQUIDITY: Map<(Addr, String), RemoveLiquidityRequest> =
     Map::new("pending_remove_liquidity");
 
+#[cw_serde]
+pub struct ConcentratedPoolCreateRequest {
+    pub tx_id: String,
+    pub sender: Addr,
+    pub pair_info: PairWithDenomAndAmount,
+    pub pool_key: PoolKey,
+}
+pub const PENDING_CONCENTRATED_POOL_REQUESTS: Map<(Addr, String), ConcentratedPoolCreateRequest> =
+    Map::new("pending_concentrated_pool_requests");
+
+#[cw_serde]
+pub struct ConcentratedAddLiquidityRequest {
+    pub tx_id: String,
+    pub sender: Addr,
+    pub pair_info: PairWithDenomAndAmount,
+    pub pool_key: PoolKey,
+    pub lower_tick_index: i64,
+    pub upper_tick_index: i64,
+    pub position_id: Option<u128>,
+}
+pub const PENDING_CONCENTRATED_ADD_LIQUIDITY: Map<(Addr, String), ConcentratedAddLiquidityRequest> =
+    Map::new("pending_concentrated_add_liquidity");
+
+#[cw_serde]
+pub struct ConcentratedRemoveLiquidityRequest {
+    pub tx_id: String,
+    pub sender: Addr,
+    pub pool_key: PoolKey,
+    pub position_id: u128,
+    pub liquidity_delta: cosmwasm_std::Uint128,
+}
+pub const PENDING_CONCENTRATED_REMOVE_LIQUIDITY: Map<
+    (Addr, String),
+    ConcentratedRemoveLiquidityRequest,
+> = Map::new("pending_concentrated_remove_liquidity");
+
+#[cw_serde]
+pub struct ConcentratedCollectFeesRequest {
+    pub tx_id: String,
+    pub sender: Addr,
+    pub pool_key: PoolKey,
+    pub position_id: u128,
+    pub recipient: CrossChainUser,
+}
+pub const PENDING_CONCENTRATED_COLLECT_FEES: Map<(Addr, String), ConcentratedCollectFeesRequest> =
+    Map::new("pending_concentrated_collect_fees");
+
+#[cw_serde]
+pub struct ConcentratedCollectProtocolFeesRequest {
+    pub tx_id: String,
+    pub sender: Addr,
+    pub pool_key: PoolKey,
+    pub recipient: CrossChainUser,
+    pub amount_0_requested: Uint128,
+    pub amount_1_requested: Uint128,
+}
+pub const PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES: Map<
+    (Addr, String),
+    ConcentratedCollectProtocolFeesRequest,
+> = Map::new("pending_concentrated_collect_protocol_fees");
+
 // Map for PENDING single-sided add-liquidity transactions
 pub const PENDING_SINGLE_SIDED_LIQUIDITY: Map<(Addr, String), SingleSidedLiquidityRequest> =
     Map::new("pending_single_sided_liquidity");
@@ -98,6 +175,19 @@ pub const PENDING_SINGLE_SIDED_LIQUIDITY: Map<(Addr, String), SingleSidedLiquidi
 pub const PENDING_DEPOSIT_TOKEN: Map<Token, TokenWithDenomAndAmount> =
     Map::new("pending_deposit_token");
 
+pub fn pool_key_to_map_key(pool_key: &PoolKey) -> String {
+    let (fee_tier_bps, tick_spacing) = match pool_key.pool_type {
+        euclid::msgs::vlp::base::PoolType::Concentrated {
+            fee_tier_bps,
+            tick_spacing,
+        } => (fee_tier_bps, tick_spacing),
+        _ => (0, 0),
+    };
+    format!(
+        "{}\0{}\0{}\0{}",
+        pool_key.pair.token_1, pool_key.pair.token_2, fee_tier_bps, tick_spacing
+    )
+}
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::{testing::mock_dependencies, Addr};

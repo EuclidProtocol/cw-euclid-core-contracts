@@ -46,6 +46,7 @@ use factory::{
     FactoryContract,
 };
 use mock::{mock::mock_app, mock_builder::MockEuclidBuilder};
+use position_token::mock::mock_position_token;
 use router::RouterContract;
 
 use crate::helpers::{
@@ -86,13 +87,18 @@ fn test_proper_instantiation() {
             ("recipient1", vec![]),
             ("recipient2", vec![]),
         ])
-        .with_contracts(vec![("escrow", mock_escrow()), ("factory", mock_factory())])
+        .with_contracts(vec![
+            ("escrow", mock_escrow()),
+            ("factory", mock_factory()),
+            ("position_token", mock_position_token()),
+        ])
         .build(&mut factory);
     let owner = andr.get_wallet("owner");
 
     let escrow_code_id = 1;
     let factory_code_id = 2;
-    let cw20_code_id = 3;
+    let position_token_code_id = 3;
+    let cw20_code_id = 4;
     let chain_uid = ChainUid::create("chain1".to_string()).unwrap();
     let router_contract = "router_contract".to_string();
     let relayer_contract = Addr::unchecked("relayer_contract");
@@ -108,6 +114,7 @@ fn test_proper_instantiation() {
         chain_uid.clone(),
         escrow_code_id,
         cw20_code_id,
+        position_token_code_id,
         true,
         relayer_contract.clone(),
         rate_limit_fee_recipient,
@@ -1701,6 +1708,7 @@ pub fn run_test_swap_request_reusable(
             swaps: vec![NextSwapPair {
                 token_in: token_a.token.clone(),
                 token_out: token_b.token.clone(),
+                pool_key: None,
                 test_fail: None,
             }],
             recipients,
@@ -1877,11 +1885,13 @@ fn run_test_multi_hop_swap_request(factory_chain_id: &str, router_chain_id: &str
                     NextSwapPair {
                         token_in: token_a.token.clone(),
                         token_out: token_b.token.clone(),
+                        pool_key: None,
                         test_fail: None,
                     },
                     NextSwapPair {
                         token_in: token_b.token.clone(),
                         token_out: token_c.token.clone(),
+                        pool_key: None,
                         test_fail: None,
                     },
                 ],
@@ -2040,6 +2050,7 @@ fn run_swap_request_with_valid_partner_fee(factory_chain_id: &str, router_chain_
         vec![NextSwapPair {
             token_in: Token::create("eucl".to_string()).unwrap(),
             token_out: Token::create("nibi".to_string()).unwrap(),
+            pool_key: None,
             test_fail: None,
         }],
         vec![],
@@ -2164,6 +2175,7 @@ fn test_swap_request_fails_with_invalid_partner_fee_bps() {
         vec![NextSwapPair {
             token_in: Token::create("eucl".to_string()).unwrap(),
             token_out: Token::create("nibi".to_string()).unwrap(),
+            pool_key: None,
             test_fail: None,
         }],
         vec![],
@@ -2282,6 +2294,7 @@ fn test_swap_request_fails_for_unsupported_denomination_for_asset_in() {
         vec![NextSwapPair {
             token_in: Token::create("eucl".to_string()).unwrap(),
             token_out: Token::create("nibi".to_string()).unwrap(),
+            pool_key: None,
             test_fail: None,
         }],
         vec![],
@@ -2393,6 +2406,7 @@ fn test_swap_request_fails_for_zero_min_amount_out() {
         vec![NextSwapPair {
             token_in: Token::create("eucl".to_string()).unwrap(),
             token_out: Token::create("nibi".to_string()).unwrap(),
+            pool_key: None,
             test_fail: None,
         }],
         vec![],
@@ -2503,6 +2517,7 @@ fn test_swap_request_fails_for_invalid_swap_route() {
         vec![NextSwapPair {
             token_in: Token::create("osmo".to_string()).unwrap(),
             token_out: Token::create("nibi".to_string()).unwrap(),
+            pool_key: None,
             test_fail: None,
         }],
         vec![Recipient {
@@ -2785,6 +2800,7 @@ fn run_test_stable_pool_swap_request(factory_chain_id: &str, router_chain_id: &s
                 swaps: vec![NextSwapPair {
                     token_in: token_a.token.clone(),
                     token_out: token_b.token.clone(),
+                    pool_key: None,
                     test_fail: None,
                 }],
                 recipients: vec![],

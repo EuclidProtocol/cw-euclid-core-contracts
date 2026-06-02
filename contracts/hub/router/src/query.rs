@@ -1,4 +1,4 @@
-use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, Deps, Order};
+use cosmwasm_std::{ensure, to_json_binary, Addr, Binary, Deps, Order, Uint128};
 use cw_storage_plus::Bound;
 use euclid::{
     chain::ChainUid,
@@ -7,21 +7,27 @@ use euclid::{
     msgs::{
         router::{
             AllChainResponse, AllEscrowsResponse, AllVlpResponse, ChainResponse,
-            ChainTimeoutResponse, DefaultReleaseFeeResponse, EscrowResponse, FeeStateResponse,
-            LockedChainsResponse, QueryRelayerAddressesResponse, QuerySimulateSwap, ReleaseFee,
+            ChainTimeoutResponse, ClpPositionInfoResponse, DefaultReleaseFeeResponse,
+            EscrowResponse, EuclidFeeOverrideResponse, FeeStateResponse, LockedChainsResponse,
+            PoolKeyVlpResponse, QueryRelayerAddressesResponse, QuerySimulateSwap, ReleaseFee,
             ReleaseFeesQueryResponse, SimulateSwapResponse, StateResponse, VlpResponse,
         },
         virtual_balance::{GetTokenMetadataByDenomResponse, GetTokenStatusResponse},
-        vlp::base::VlpSimulateSwapMsg,
+        vlp::{
+            base::{PoolKey, PoolType, VlpSimulateSwapMsg},
+            concentrated::msg::{PositionResponse, QueryMsg as ConcentratedQueryMsg},
+        },
     },
     swap::{NextSwapPair, NextSwapVlp},
     token::{Pair, Token, TokenMetadata, TokenType},
     utils::pagination::{Pagination, DEFAULT_PAGINATION_LIMIT, DEFAULT_PAGINATION_SKIP},
 };
 
+use crate::helpers::euclid_fee_override::get_euclid_fee_override;
 use crate::state::{
-    ADMIN, CHAIN_TIMEOUT_SECONDS, CHAIN_UID_TO_CHAIN, DEFAULT_RELEASE_FEE, FEE_STATE,
-    LOCKED_CHAINS, RELAYER_CONTRACT, RELEASE_FEES, STATE, VIRTUAL_BALANCE_CONTRACT, VLPS,
+    ADMIN, CHAIN_TIMEOUT_SECONDS, CHAIN_UID_TO_CHAIN, CLP_POSITION_ID_VLP_MAP, CONCENTRATED_VLPS,
+    DEFAULT_RELEASE_FEE, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, RELEASE_FEES, STATE,
+    VIRTUAL_BALANCE_CONTRACT, VLPS,
 };
 
 pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
@@ -31,6 +37,7 @@ pub fn query_state(deps: Deps) -> Result<Binary, ContractError> {
         admins,
         constant_product_vlp_code_id: state.constant_product_vlp_code_id,
         stable_vlp_code_id: state.stable_vlp_code_id,
+        concentrated_vlp_code_id: state.concentrated_vlp_code_id,
         virtual_balance_address: VIRTUAL_BALANCE_CONTRACT.load(deps.storage)?,
         locked: state.locked,
     })?)
@@ -50,7 +57,7 @@ pub fn query_all_vlps(
     let start = start.map(Bound::inclusive);
     let end = end.map(Bound::exclusive);
 
-    let vlps: Result<_, ContractError> = VLPS
+    let mut vlps: Vec<VlpResponse> = VLPS
         .range(deps.storage, start, end, Order::Ascending)
         .skip(skip.unwrap_or(0) as usize)
         .take(limit.unwrap_or(10) as usize)
@@ -60,11 +67,36 @@ pub fn query_all_vlps(
                 vlp: v.1.to_string(),
                 token_1: Token::create(v.0 .0)?,
                 token_2: Token::create(v.0 .1)?,
+                pool_key: None,
+            })
+        })
+        .collect::<Result<_, ContractError>>()?;
+
+    let concentrated_vlps: Result<Vec<_>, ContractError> = CONCENTRATED_VLPS
+        .range(deps.storage, None, None, Order::Ascending)
+        .skip(skip.unwrap_or(0) as usize)
+        .take(limit.unwrap_or(10) as usize)
+        .map(|v| {
+            let v = v?;
+            let (token_1, token_2, fee_tier_bps, tick_spacing) = PoolKey::parse_map_key(&v.0)
+                .ok_or(ContractError::new("invalid concentrated pool key in state"))?;
+            Ok(VlpResponse {
+                vlp: v.1.to_string(),
+                token_1: Token::create(token_1.clone())?,
+                token_2: Token::create(token_2.clone())?,
+                pool_key: Some(PoolKey {
+                    pair: Pair::new(Token::create(token_1)?, Token::create(token_2)?)?,
+                    pool_type: PoolType::Concentrated {
+                        fee_tier_bps,
+                        tick_spacing,
+                    },
+                }),
             })
         })
         .collect();
+    vlps.extend(concentrated_vlps?);
 
-    Ok(to_json_binary(&AllVlpResponse { vlps: vlps? })?)
+    Ok(to_json_binary(&AllVlpResponse { vlps })?)
 }
 
 pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
@@ -75,6 +107,16 @@ pub fn query_vlp(deps: Deps, pair: Pair) -> Result<Binary, ContractError> {
         vlp: vlp.to_string(),
         token_1: Token::create(key.0)?,
         token_2: Token::create(key.1)?,
+        pool_key: None,
+    })?)
+}
+
+pub fn query_vlp_by_pool_key(deps: Deps, pool_key: PoolKey) -> Result<Binary, ContractError> {
+    let key = pool_key.to_map_key();
+    let vlp = CONCENTRATED_VLPS.load(deps.storage, key)?;
+    Ok(to_json_binary(&PoolKeyVlpResponse {
+        vlp: vlp.to_string(),
+        pool_key,
     })?)
 }
 
@@ -130,10 +172,18 @@ pub fn query_simulate_swap(deps: Deps, msg: QuerySimulateSwap) -> Result<Binary,
         err: "Swaps cannot be empty".to_string(),
     })?;
 
+    // Resolve the sender's Euclid-fee override (if a sender was supplied) via the
+    // shared resolver, so the simulated Euclid fee matches what execution charges.
+    let euclid_fee_override = match &msg.sender {
+        Some(sender) => get_euclid_fee_override(deps.storage, sender)?,
+        None => None,
+    };
+
     let simulate_msg = euclid::msgs::vlp::base::QueryMsg::SimulateSwap(VlpSimulateSwapMsg {
         asset: msg.asset_in,
         asset_amount: msg.amount_in,
         swaps: next_swaps.to_vec(),
+        euclid_fee_override,
     });
 
     let simulate_res: euclid::msgs::vlp::base::GetSwapQueryResponse = deps
@@ -159,7 +209,24 @@ pub fn validate_swap_pairs(
         .iter()
         .map(|swap| -> Result<_, ContractError> {
             let pair = Pair::new(swap.token_in.clone(), swap.token_out.clone())?;
-            let vlp_address = VLPS.load(deps.storage, pair.get_tupple())?;
+            let vlp_address = if let Some(pool_key) = &swap.pool_key {
+                ensure!(
+                    matches!(pool_key.pool_type, PoolType::Concentrated { .. }),
+                    ContractError::new("pool_key must reference a concentrated pool")
+                );
+                ensure!(
+                    pair.get_tupple() == pool_key.pair.get_tupple(),
+                    ContractError::new("swap hop tokens do not match pool_key pair")
+                );
+
+                let key = pool_key.to_map_key();
+                CONCENTRATED_VLPS.load(deps.storage, key).map_err(|_| {
+                    ContractError::new("concentrated pool for provided pool_key is not registered")
+                })?
+            } else {
+                VLPS.load(deps.storage, pair.get_tupple())?
+            };
+
             Ok(NextSwapVlp {
                 vlp_address: vlp_address.to_string(),
                 test_fail: swap.test_fail,
@@ -195,6 +262,20 @@ pub fn query_relayer_addresses(deps: Deps) -> Result<Binary, ContractError> {
     let relayer_addresses = RELAYER_CONTRACT.load(deps.storage)?;
     Ok(to_json_binary(&QueryRelayerAddressesResponse {
         relayer_contract: relayer_addresses,
+    })?)
+}
+
+pub fn query_clp_position_info(deps: Deps, position_id: Uint128) -> Result<Binary, ContractError> {
+    let vlp_address = CLP_POSITION_ID_VLP_MAP
+        .load(deps.storage, position_id.u128())
+        .map_err(|_| ContractError::new("Position id not found"))?;
+    let position: PositionResponse = deps.querier.query_wasm_smart(
+        &vlp_address,
+        &ConcentratedQueryMsg::Position { position_id },
+    )?;
+    Ok(to_json_binary(&ClpPositionInfoResponse {
+        vlp_address: vlp_address.to_string(),
+        position,
     })?)
 }
 
@@ -302,6 +383,17 @@ pub fn query_chain_timeout(deps: Deps, chain_uid: ChainUid) -> Result<Binary, Co
     })?)
 }
 
+pub fn query_euclid_fee_override(
+    deps: Deps,
+    user: CrossChainUser,
+) -> Result<Binary, ContractError> {
+    let user = user.validate()?.to_owned();
+    let euclid_fee_bps = get_euclid_fee_override(deps.storage, &user)?;
+    Ok(to_json_binary(&EuclidFeeOverrideResponse {
+        euclid_fee_bps,
+    })?)
+}
+
 #[cfg(test)]
 mod tests {
     use cosmwasm_std::{
@@ -322,9 +414,11 @@ mod tests {
     };
     use euclid::{
         chain::ChainUid,
+        cross_chain_user::CrossChainUser,
         msgs::router::{
-            AllChainResponse, AllVlpResponse, ChainResponse, ExecuteMsg, ManageRouterState,
-            QueryRelayerAddressesResponse, ReleaseFeesQueryResponse, StateResponse, VlpResponse,
+            AllChainResponse, AllVlpResponse, ChainResponse, EuclidFeeOverrideResponse, ExecuteMsg,
+            ManageRouterState, QueryRelayerAddressesResponse, ReleaseFeesQueryResponse,
+            StateResponse, VlpResponse,
         },
         token::{Pair, Token},
         utils::pagination::Pagination,
@@ -489,6 +583,71 @@ mod tests {
         )
         .unwrap();
         assert!(parsed.fees.is_empty());
+    }
+
+    #[rstest]
+    fn test_query_euclid_fee_override_roundtrip(mut initialized: MockDeps) {
+        let creator = initialized.api.addr_make("creator");
+        let user = CrossChainUser::new(
+            ChainUid::create("chain1".to_string()).unwrap(),
+            "wallet1".to_string(),
+        );
+
+        // Absent: returns None.
+        let parsed: EuclidFeeOverrideResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::GetEuclidFeeOverride { user: user.clone() },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.euclid_fee_bps, None);
+
+        // After set: returns Some(bps).
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: Some(42),
+            }),
+        )
+        .unwrap();
+        let parsed: EuclidFeeOverrideResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::GetEuclidFeeOverride { user: user.clone() },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.euclid_fee_bps, Some(42));
+
+        // After remove: returns None again.
+        execute(
+            initialized.as_mut(),
+            mock_env(),
+            message_info(&creator, &[]),
+            ExecuteMsg::ManageRouterState(ManageRouterState::SetEuclidFeeOverride {
+                user: user.clone(),
+                euclid_fee_bps: None,
+            }),
+        )
+        .unwrap();
+        let parsed: EuclidFeeOverrideResponse = from_json(
+            query(
+                initialized.as_ref(),
+                mock_env(),
+                QueryMsg::GetEuclidFeeOverride { user },
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(parsed.euclid_fee_bps, None);
     }
 
     #[rstest]

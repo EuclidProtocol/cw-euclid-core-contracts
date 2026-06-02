@@ -1,29 +1,43 @@
 use cosmwasm_std::{
-    from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Int256, ReplyOn, Response, SubMsg,
-    WasmMsg,
+    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Int256, ReplyOn, Response,
+    SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20Coin;
 use euclid::{
     deposit::DepositTokenResponse,
     error::ContractError,
     events::{deposit_token_event, swap_event},
-    liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
+    liquidity::{
+        AddLiquidityResponse, ConcentratedAddLiquidityResponse, ConcentratedCollectFeesResponse,
+        ConcentratedCollectProtocolFeesResponse, ConcentratedRemoveLiquidityResponse,
+        RemoveLiquidityResponse,
+    },
     msgs::{
+        self,
         escrow::InstantiateMsg as EscrowInstantiateMsg,
-        vlp::base::{DeregisterDenomResponse, PoolCreationResponse, RegisterDenomResponse},
+        position_token::{self, PositionInfoResponse},
+        vlp::base::{DeregisterDenomResponse, RegisterDenomResponse},
     },
     swap::{SwapResponse, TransferVoucherResponse},
     token::Token,
 };
-use euclid_ibc::{ack::AcknowledgementMsg, router_ibc::RouterCrossChainExecuteMsg};
+use euclid_ibc::{
+    ack::AcknowledgementMsg,
+    router_ibc::{
+        RouterCrossChainConcentratedRequestPoolCreationExecuteMsg, RouterCrossChainExecuteMsg,
+    },
+};
 
 use crate::{
     reply::{ESCROW_INSTANTIATE_REPLY_ID, LP_INSTANTIATE_REPLY_ID},
     state::{
-        ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
+        ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_CONCENTRATED_ADD_LIQUIDITY,
+        PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
+        PENDING_CONCENTRATED_POOL_REQUESTS, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
         PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS,
         PENDING_REMOVE_LIQUIDITY, PENDING_SINGLE_SIDED_LIQUIDITY, PENDING_SWAPS,
-        PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW, VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
+        PENDING_TOKEN_DEPOSIT, POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW,
+        VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
     },
 };
 
@@ -34,13 +48,29 @@ pub fn reusable_internal_ack_call(
     ack: Binary,
     is_native: bool,
 ) -> Result<Response, ContractError> {
+    // When pool_factory owns pool flows, route pool-related acks to it.
+    if crate::execute::proxy::pool_factory_is_initialised(deps)? && msg.is_pool_variant() {
+        let submsg = crate::execute::proxy::pool_factory_on_pool_ack_submsg(
+            deps,
+            to_json_binary(&msg)?,
+            ack,
+            is_native,
+        )?;
+        return Ok(Response::new()
+            .add_attribute("method", "forward_pool_ack_to_pool_factory")
+            .add_submessage(submsg));
+    }
     // Parse the ack based on request
     match msg {
         RouterCrossChainExecuteMsg::RequestPoolCreation { tx_id, sender, .. } => {
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<PoolCreationResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<AddLiquidityResponse> = from_json(ack)?;
 
             ack_pool_creation(deps.branch(), env, sender.address, res, tx_id, is_native)
+        }
+        RouterCrossChainExecuteMsg::RequestConcentratedPoolCreation(msg) => {
+            let res: AcknowledgementMsg<ConcentratedAddLiquidityResponse> = from_json(ack)?;
+            ack_concentrated_pool_creation(deps.branch(), env, msg, res, is_native)
         }
 
         RouterCrossChainExecuteMsg::RegisterDenom { tx_id, sender, .. } => {
@@ -61,10 +91,50 @@ pub fn reusable_internal_ack_call(
             let res: AcknowledgementMsg<AddLiquidityResponse> = from_json(ack)?;
             ack_add_liquidity(deps.branch(), res, sender.address, tx_id, is_native)
         }
+        RouterCrossChainExecuteMsg::AddConcentratedLiquidity(msg) => {
+            let res: AcknowledgementMsg<ConcentratedAddLiquidityResponse> = from_json(ack)?;
+            ack_add_concentrated_liquidity(
+                deps.branch(),
+                res,
+                msg.sender.address,
+                msg.tx_id,
+                is_native,
+            )
+        }
         RouterCrossChainExecuteMsg::RemoveLiquidity(msg) => {
             // Process acknowledgment for add liquidity
             let res: AcknowledgementMsg<RemoveLiquidityResponse> = from_json(ack)?;
             ack_remove_liquidity(deps.branch(), res, msg.sender.address, msg.tx_id, is_native)
+        }
+        RouterCrossChainExecuteMsg::RemoveConcentratedLiquidity(msg) => {
+            let res: AcknowledgementMsg<ConcentratedRemoveLiquidityResponse> = from_json(ack)?;
+            ack_remove_concentrated_liquidity(
+                deps.branch(),
+                res,
+                msg.sender.address,
+                msg.tx_id,
+                is_native,
+            )
+        }
+        RouterCrossChainExecuteMsg::CollectConcentratedFees(msg) => {
+            let res: AcknowledgementMsg<ConcentratedCollectFeesResponse> = from_json(ack)?;
+            ack_collect_concentrated_fees(
+                deps.branch(),
+                res,
+                msg.sender.address,
+                msg.tx_id,
+                is_native,
+            )
+        }
+        RouterCrossChainExecuteMsg::CollectConcentratedProtocolFees(msg) => {
+            let res: AcknowledgementMsg<ConcentratedCollectProtocolFeesResponse> = from_json(ack)?;
+            ack_collect_concentrated_protocol_fees(
+                deps.branch(),
+                res,
+                msg.sender.address,
+                msg.tx_id,
+                is_native,
+            )
         }
         RouterCrossChainExecuteMsg::Swap(swap) => {
             // Process acknowledgment for swap
@@ -117,7 +187,7 @@ fn ack_pool_creation(
     deps: DepsMut,
     env: Env,
     sender: String,
-    res: AcknowledgementMsg<PoolCreationResponse>,
+    res: AcknowledgementMsg<AddLiquidityResponse>,
     tx_id: String,
     is_native: bool,
 ) -> Result<Response, ContractError> {
@@ -142,13 +212,13 @@ fn ack_pool_creation(
             PAIR_TO_VLP.save(
                 deps.storage,
                 existing_req.pair_info.get_pair()?.get_tupple(),
-                &data.vlp_contract.clone(),
+                &data.vlp_address.clone(),
             )?;
             // Prepare response
             let mut res = Response::new()
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("method", "pool_creation")
-                .add_attribute("vlp", data.vlp_contract.clone());
+                .add_attribute("vlp", data.vlp_address.clone());
             // Collects PairInfo into a vector of Token Info for easy iteration
             let tokens = existing_req.pair_info.get_vec_token_info();
             for token in tokens {
@@ -202,7 +272,7 @@ fn ack_pool_creation(
                     }],
                     mint: lp_token_instantiate_data.mint,
                     marketing: lp_token_instantiate_data.marketing,
-                    vlp: data.vlp_contract.clone(),
+                    vlp: data.vlp_address.clone(),
                     factory: env.contract.address,
                     token_pair: existing_req.pair_info.get_pair()?,
                 })?,
@@ -212,7 +282,7 @@ fn ack_pool_creation(
             // Save lp shares against vlp address
             VLP_TO_LP_SHARES.save(
                 deps.storage,
-                data.vlp_contract,
+                data.vlp_address.clone(),
                 &Int256::from(
                     cosmwasm_std::Uint128::try_from(data.mint_lp_tokens)
                         .map_err(|e| ContractError::Std(e.into()))?,
@@ -250,6 +320,127 @@ fn ack_pool_creation(
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("method", "reject_pool_request")
                 .add_attribute("error", err.clone())
+                .add_messages(msgs))
+        }
+    }
+}
+
+fn ack_concentrated_pool_creation(
+    deps: DepsMut,
+    _env: Env,
+    msg: RouterCrossChainConcentratedRequestPoolCreationExecuteMsg,
+    res: AcknowledgementMsg<ConcentratedAddLiquidityResponse>,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&msg.sender.address)?;
+    let req_key = (sender.clone(), msg.tx_id.clone());
+    let existing_req = PENDING_CONCENTRATED_POOL_REQUESTS
+        .load(deps.storage, req_key.clone())
+        .map_err(|_| ContractError::NotFound {
+            msg: "pending concentrated pool request not found".to_string(),
+        })?;
+
+    PENDING_CONCENTRATED_POOL_REQUESTS.remove(deps.storage, req_key);
+
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            POOL_KEY_TO_VLP.save(
+                deps.storage,
+                existing_req.pool_key.to_map_key(),
+                &data.vlp_address,
+            )?;
+
+            let mut res = Response::new();
+            for token_info in existing_req.pair_info.get_vec_token_info() {
+                if token_info.token_type.is_voucher() {
+                    continue;
+                }
+
+                let escrow_contract =
+                    TOKEN_TO_ESCROW.may_load(deps.storage, token_info.token.clone())?;
+
+                match escrow_contract {
+                    Some(address) => {
+                        let send_msg = token_info
+                            .token_type
+                            .create_escrow_msg(token_info.amount, address)?;
+                        res = res.add_message(send_msg);
+                    }
+                    None => {
+                        let state = STATE.load(deps.storage)?;
+                        let admins = ADMIN.load(deps.storage)?;
+                        let escrow_code_id = state.escrow_code_id;
+                        let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                            admin: Some(admins.migration_admin.clone().into_string()),
+                            code_id: escrow_code_id,
+                            msg: to_json_binary(&EscrowInstantiateMsg {
+                                token_id: token_info.clone().token,
+                                allowed_denom: Some(token_info.clone().token_type),
+                            })?,
+                            funds: vec![],
+                            label: "escrow".to_string(),
+                        });
+                        PENDING_DEPOSIT_TOKEN.save(
+                            deps.storage,
+                            token_info.clone().token,
+                            &token_info,
+                        )?;
+                        res = res.add_submessage(SubMsg {
+                            id: ESCROW_INSTANTIATE_REPLY_ID,
+                            msg: init_msg,
+                            gas_limit: None,
+                            reply_on: ReplyOn::Always,
+                            payload: Binary::default(),
+                        });
+                    }
+                }
+            }
+
+            let position_token_contract = POSITION_TOKEN_CONTRACT
+                .load(deps.storage)
+                .map_err(|_| ContractError::new("Position token contract not registered"))?;
+
+            let mint_msg = msgs::position_token::ExecuteMsg::Mint(position_token::MintMsg {
+                token_id: data.position_id,
+                token_info: position_token::TokenInfo {
+                    owner: sender.clone(),
+                    token_uri: None,
+                },
+                position_info: position_token::PositionInfo {
+                    liquidity: data.liquidity_delta,
+                    vlp_address: data.vlp_address.clone(),
+                },
+            });
+            res = res.add_message(mint_msg.to_msg(position_token_contract)?);
+
+            Ok(res
+                .add_attribute("tx_id", msg.tx_id)
+                .add_attribute("method", "ack_concentrated_pool_creation")
+                .add_attribute("vlp", data.vlp_address)
+                .add_attribute("position_id", data.position_id)
+                .add_attribute("sender", sender))
+        }
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            let mut msgs: Vec<CosmosMsg> = Vec::new();
+            for token_info in existing_req.pair_info.get_vec_token_info() {
+                if token_info.token_type.is_voucher() {
+                    continue;
+                }
+                let msg = token_info.token_type.create_transfer_msg(
+                    token_info.amount,
+                    sender.to_string(),
+                    None,
+                    None,
+                )?;
+                msgs.push(msg);
+            }
+            Ok(Response::new()
+                .add_attribute("tx_id", msg.tx_id)
+                .add_attribute("method", "reject_concentrated_pool_request")
+                .add_attribute("error", err)
                 .add_messages(msgs))
         }
     }
@@ -485,6 +676,140 @@ fn ack_add_liquidity(
     }
 }
 
+fn ack_add_concentrated_liquidity(
+    deps: DepsMut,
+    res: AcknowledgementMsg<ConcentratedAddLiquidityResponse>,
+    sender: String,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender.clone(), tx_id.clone());
+    let liquidity_info = PENDING_CONCENTRATED_ADD_LIQUIDITY
+        .load(deps.storage, req_key.clone())
+        .map_err(|_| ContractError::NotFound {
+            msg: "pending concentrated liquidity request not found".to_string(),
+        })?;
+    PENDING_CONCENTRATED_ADD_LIQUIDITY.remove(deps.storage, req_key);
+
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            let mut res = Response::new().add_attribute("method", "ack_add_concentrated_liquidity");
+            let state = STATE.load(deps.storage)?;
+            let admins = ADMIN.load(deps.storage)?;
+            let escrow_code_id = state.escrow_code_id;
+            for token_info in liquidity_info.pair_info.get_vec_token_info() {
+                if token_info.token_type.is_voucher() {
+                    continue;
+                }
+                let escrow_contract =
+                    TOKEN_TO_ESCROW.may_load(deps.storage, token_info.token.clone())?;
+                match escrow_contract {
+                    Some(address) => {
+                        let send_msg = token_info
+                            .token_type
+                            .create_escrow_msg(token_info.amount, address)?;
+                        res = res.add_message(send_msg);
+                    }
+                    None => {
+                        let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                            admin: Some(admins.migration_admin.clone().into_string()),
+                            code_id: escrow_code_id,
+                            msg: to_json_binary(&EscrowInstantiateMsg {
+                                token_id: token_info.clone().token,
+                                allowed_denom: Some(token_info.clone().token_type),
+                            })?,
+                            funds: vec![],
+                            label: "escrow".to_string(),
+                        });
+                        PENDING_DEPOSIT_TOKEN.save(
+                            deps.storage,
+                            token_info.clone().token,
+                            &token_info,
+                        )?;
+                        res = res.add_submessage(SubMsg {
+                            id: ESCROW_INSTANTIATE_REPLY_ID,
+                            msg: init_msg,
+                            gas_limit: None,
+                            reply_on: ReplyOn::Always,
+                            payload: Binary::default(),
+                        });
+                    }
+                }
+            }
+
+            let position_token_contract = POSITION_TOKEN_CONTRACT
+                .load(deps.storage)
+                .map_err(|_| ContractError::new("Position token contract not registered"))?;
+
+            let existing_position: Result<PositionInfoResponse, _> = deps.querier.query_wasm_smart(
+                position_token_contract.clone(),
+                &msgs::position_token::QueryMsg::PositionInfo {
+                    token_id: data.position_id.to_string(),
+                },
+            );
+            match existing_position {
+                Ok(_position) => {
+                    // Add liquidity to existing position
+                    let update_position_msg = msgs::position_token::ExecuteMsg::UpdatePosition {
+                        token_id: data.position_id,
+                        liquidity_change: data.liquidity_delta.into(),
+                    };
+                    let update_position_msg =
+                        update_position_msg.to_msg(position_token_contract)?;
+                    res = res.add_message(update_position_msg);
+                }
+                Err(_err) => {
+                    // Mint new position
+                    let mint_msg =
+                        msgs::position_token::ExecuteMsg::Mint(msgs::position_token::MintMsg {
+                            token_id: data.position_id,
+                            token_info: msgs::position_token::TokenInfo {
+                                owner: sender.clone(),
+                                token_uri: None,
+                            },
+                            position_info: msgs::position_token::PositionInfo {
+                                liquidity: data.liquidity_delta,
+                                vlp_address: data.vlp_address.clone(),
+                            },
+                        });
+                    let mint_msg = mint_msg.to_msg(position_token_contract)?;
+                    res = res.add_message(mint_msg);
+                }
+            }
+
+            Ok(res
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("position_id", data.position_id)
+                .add_attribute("sender", sender))
+        }
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            let mut msgs: Vec<CosmosMsg> = Vec::new();
+            for token_info in liquidity_info.pair_info.get_vec_token_info() {
+                if token_info.token_type.is_voucher() {
+                    continue;
+                }
+                let msg = token_info.token_type.create_transfer_msg(
+                    token_info.amount,
+                    sender.to_string(),
+                    None,
+                    None,
+                )?;
+                msgs.push(msg);
+            }
+            Ok(Response::new()
+                .add_attribute("method", "concentrated_liquidity_tx_err_refund")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("error", err)
+                .add_messages(msgs))
+        }
+    }
+}
+
 fn ack_remove_liquidity(
     deps: DepsMut,
     res: AcknowledgementMsg<RemoveLiquidityResponse>,
@@ -495,7 +820,11 @@ fn ack_remove_liquidity(
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
     // Validate that the pending exists for the sender
-    let liquidity_info = PENDING_REMOVE_LIQUIDITY.load(deps.storage, req_key.clone())?;
+    let liquidity_info = PENDING_REMOVE_LIQUIDITY
+        .load(deps.storage, req_key.clone())
+        .map_err(|_| ContractError::NotFound {
+            msg: "pending remove liquidity request not found".to_string(),
+        })?;
     // Remove this from pending
     PENDING_REMOVE_LIQUIDITY.remove(deps.storage, req_key.clone());
     // Check whether res is an error or not
@@ -550,6 +879,185 @@ fn ack_remove_liquidity(
             Ok(Response::new()
                 .add_message(lp_send_msg)
                 .add_attribute("method", "liquidity_tx_err_refund")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("error", err))
+        }
+    }
+}
+
+/**
+ * NOTE (M-04): This function is called when the remove liquidity request is acknowledged by the IBC.
+ * It is used to give back the liquidity to the position.
+ * This is needed because the remove liquidity request is sent to the IBC before the liquidity is removed from the position.
+ * So, if the IBC fails, we need to give back the liquidity to the position.
+ * It doesn't burn token because there might be a refund in progress while we are processing this packet.
+ */
+fn ack_remove_concentrated_liquidity(
+    deps: DepsMut,
+    res: AcknowledgementMsg<ConcentratedRemoveLiquidityResponse>,
+    sender: String,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender.clone(), tx_id.clone());
+    let liquidity_info = PENDING_CONCENTRATED_REMOVE_LIQUIDITY
+        .load(deps.storage, req_key.clone())
+        .map_err(|_| ContractError::NotFound {
+            msg: "pending concentrated remove liquidity request not found".to_string(),
+        })?;
+    PENDING_CONCENTRATED_REMOVE_LIQUIDITY.remove(deps.storage, req_key.clone());
+
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            // We already have removed the liquidity from the position in the execute call.
+            let mut res = Response::new()
+                .add_attribute("method", "ack_remove_concentrated_liquidity")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("position_id", data.position_id.to_string())
+                .add_attribute(
+                    "liquidity_removed.amount_0",
+                    data.liquidity_removed.token_1.amount.to_string(),
+                )
+                .add_attribute(
+                    "liquidity_removed.amount_1",
+                    data.liquidity_removed.token_2.amount.to_string(),
+                )
+                .add_attribute("liquidity_delta", data.liquidity_delta.to_string())
+                .add_attribute("liquidity_after", data.liquidity_after.to_string())
+                .add_attribute("vlp_address", data.vlp_address)
+                .add_attribute("position_burned", data.position_burned.to_string());
+
+            // Burn the position token only when the VLP has confirmed the
+            // position is fully cleared (zero liquidity AND zero owed fees).
+            if data.position_burned {
+                let position_token_contract = POSITION_TOKEN_CONTRACT
+                    .load(deps.storage)
+                    .map_err(|_| ContractError::new("Position token contract not registered"))?;
+                let burn_msg = msgs::position_token::ExecuteMsg::Burn {
+                    token_id: data.position_id,
+                };
+                res = res.add_message(burn_msg.to_msg(position_token_contract)?);
+            }
+
+            Ok(res)
+        }
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            let position_token_contract = POSITION_TOKEN_CONTRACT
+                .load(deps.storage)
+                .map_err(|_| ContractError::new("Position token contract not registered"))?;
+
+            // Give back the liquidity to the position
+            let update_position_msg = msgs::position_token::ExecuteMsg::UpdatePosition {
+                token_id: Uint128::new(liquidity_info.position_id),
+                liquidity_change: liquidity_info.liquidity_delta.into(),
+            };
+            let update_position_msg = update_position_msg.to_msg(position_token_contract)?;
+            Ok(Response::new()
+                .add_attribute("method", "concentrated_remove_liquidity_err_refund")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("position_id", liquidity_info.position_id.to_string())
+                .add_attribute("error", err)
+                .add_message(update_position_msg))
+        }
+    }
+}
+
+fn ack_collect_concentrated_fees(
+    deps: DepsMut,
+    res: AcknowledgementMsg<ConcentratedCollectFeesResponse>,
+    sender: String,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender.clone(), tx_id.clone());
+    let collect_info = PENDING_CONCENTRATED_COLLECT_FEES
+        .may_load(deps.storage, req_key.clone())?
+        .ok_or(ContractError::Generic {
+            err: format!(
+                "no pending collect fees request found for sender={}, tx_id={}",
+                sender, tx_id
+            ),
+        })?;
+
+    PENDING_CONCENTRATED_COLLECT_FEES.remove(deps.storage, req_key);
+
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            ensure!(
+                data.pool_key == collect_info.pool_key,
+                ContractError::new("Pool key mismatch")
+            );
+            ensure!(
+                data.position_id.u128() == collect_info.position_id,
+                ContractError::new("Position id mismatch")
+            );
+
+            Ok(Response::new()
+                .add_attribute("method", "ack_collect_concentrated_fees")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("position_id", data.position_id)
+                .add_attribute("amount_0", data.amount_0)
+                .add_attribute("amount_1", data.amount_1))
+        }
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            Ok(Response::new()
+                .add_attribute("method", "ack_collect_concentrated_fees_error")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("position_id", collect_info.position_id.to_string())
+                .add_attribute("error", err))
+        }
+    }
+}
+
+fn ack_collect_concentrated_protocol_fees(
+    deps: DepsMut,
+    res: AcknowledgementMsg<ConcentratedCollectProtocolFeesResponse>,
+    sender: String,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender.clone(), tx_id.clone());
+    let collect_info = PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES
+        .load(deps.storage, req_key.clone())
+        .map_err(|_| ContractError::NotFound {
+            msg: "pending concentrated collect protocol fees request not found".to_string(),
+        })?;
+    PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES.remove(deps.storage, req_key);
+
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            ensure!(
+                data.pool_key == collect_info.pool_key,
+                ContractError::new("Pool key mismatch")
+            );
+
+            Ok(Response::new()
+                .add_attribute("method", "ack_collect_concentrated_protocol_fees")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("amount_0", data.amount_0)
+                .add_attribute("amount_1", data.amount_1))
+        }
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            Ok(Response::new()
+                .add_attribute("method", "ack_collect_concentrated_protocol_fees_error")
                 .add_attribute("sender", sender)
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("error", err))
@@ -853,7 +1361,7 @@ mod tests {
         chain::ChainUid,
         cross_chain_user::CrossChainUser,
         deposit::DepositTokenRequest,
-        liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
+        liquidity::{AddLiquidityRequest, AddLiquidityResponse, RemoveLiquidityRequest},
         msgs::vlp::base::{DeregisterDenomResponse, PoolCreationResponse, RegisterDenomResponse},
         swap::{SwapRequest, TransferVoucherResponse},
         token::{
@@ -953,8 +1461,8 @@ mod tests {
             pool_config: euclid::msgs::vlp::base::PoolConfig::ConstantProduct {},
             slippage_tolerance_bps: 50,
         };
-        let ack = to_json_binary(&AcknowledgementMsg::Ok(PoolCreationResponse {
-            vlp_contract: "vlp1".to_string(),
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(AddLiquidityResponse {
+            vlp_address: "vlp1".to_string(),
             tx_id: "tx1".to_string(),
             mint_lp_tokens: Uint256::from(100u128),
             sender: cross_chain_user(sender.as_str()),
@@ -1006,7 +1514,7 @@ mod tests {
             pool_config: euclid::msgs::vlp::base::PoolConfig::ConstantProduct {},
             slippage_tolerance_bps: 50,
         };
-        let ack = to_json_binary(&AcknowledgementMsg::<PoolCreationResponse>::Error(
+        let ack = to_json_binary(&AcknowledgementMsg::<AddLiquidityResponse>::Error(
             "hub_err".to_string(),
         ))
         .unwrap();
@@ -1053,7 +1561,7 @@ mod tests {
             pool_config: euclid::msgs::vlp::base::PoolConfig::ConstantProduct {},
             slippage_tolerance_bps: 50,
         };
-        let ack = to_json_binary(&AcknowledgementMsg::<PoolCreationResponse>::Error(
+        let ack = to_json_binary(&AcknowledgementMsg::<AddLiquidityResponse>::Error(
             "fail".to_string(),
         ))
         .unwrap();

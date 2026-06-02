@@ -9,6 +9,7 @@ on:
     branches:
       - main
       - development
+      - gc/clp # Temporary branch for CLV pool testing
     types: [opened, synchronize, reopened]
 
 concurrency:

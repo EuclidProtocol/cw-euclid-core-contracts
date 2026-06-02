@@ -1084,6 +1084,7 @@ fn test_execute_meta_transaction_swap() {
         swaps: vec![NextSwapPair {
             token_in: token_a.token.clone(),
             token_out: token_b.token.clone(),
+            pool_key: None,
             test_fail: None,
         }],
         partner_fee_amount: Uint256::zero(),

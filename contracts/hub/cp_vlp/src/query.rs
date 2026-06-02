@@ -6,7 +6,8 @@ use euclid::msgs::vlp::base::{
 };
 use euclid::swap::NextSwapVlp;
 use euclid::token::{Pair, PairWithAmount, Token};
-use euclid_pool::{calculate_amount_from_shares, simulate_swap, SwapCalculationMethod};
+use euclid_pool::common::calculate_amount_from_shares;
+use euclid_pool::cp::simulate_swap;
 
 use crate::state::{ADMIN, BALANCES, CHAIN_LP_TOKENS, STATE};
 use euclid::msgs::vlp::cp::msg::{
@@ -20,6 +21,7 @@ pub fn query_simulate_swap(
     asset_in: Token,
     amount_in: Uint256,
     next_swaps: Vec<NextSwapVlp>,
+    euclid_fee_override: Option<u64>,
 ) -> Result<Binary, ContractError> {
     // Verify that the asset amount is non-zero
     ensure!(!amount_in.is_zero(), ContractError::ZeroAssetAmount {});
@@ -37,7 +39,9 @@ pub fn query_simulate_swap(
         &BALANCES,
         asset_in,
         amount_in,
-        SwapCalculationMethod::Regular,
+        // Sender-aware override (resolved by the Router) so the simulated Euclid
+        // fee matches execution; `None` keeps the pool's configured Euclid fee.
+        euclid_fee_override,
     )?;
 
     let response = match next_swaps.split_first() {
@@ -48,6 +52,8 @@ pub fn query_simulate_swap(
                     asset: swap_response.asset_out,
                     asset_amount: swap_response.amount_out,
                     swaps: forward_swaps.to_vec(),
+                    // Forward the override so it applies on every simulated hop.
+                    euclid_fee_override,
                 }),
             )?;
             Ok(to_json_binary(&next_swap_response)?)
@@ -350,6 +356,7 @@ mod tests {
                 min_token_out: Uint256::zero(),
                 next_swaps: vec![],
                 test_fail: None,
+                euclid_fee_override: None,
             }),
         )
         .unwrap();
@@ -662,7 +669,7 @@ mod tests {
 
         let swap_amount = Uint256::from(100u128);
         let response: GetSwapQueryResponse = from_json(
-            query_simulate_swap(deps.as_ref(), pair.token_1, swap_amount, vec![]).unwrap(),
+            query_simulate_swap(deps.as_ref(), pair.token_1, swap_amount, vec![], None).unwrap(),
         )
         .unwrap();
 
@@ -676,8 +683,8 @@ mod tests {
         let mut deps = mock_dependencies();
         init(&mut deps);
 
-        let err =
-            query_simulate_swap(deps.as_ref(), token1(), Uint256::zero(), vec![]).unwrap_err();
+        let err = query_simulate_swap(deps.as_ref(), token1(), Uint256::zero(), vec![], None)
+            .unwrap_err();
         assert_eq!(err, ContractError::ZeroAssetAmount {});
     }
 
@@ -687,7 +694,7 @@ mod tests {
         init(&mut deps);
 
         let unknown = Token::create("unknowntoken".to_string()).unwrap();
-        let err = query_simulate_swap(deps.as_ref(), unknown, Uint256::from(100u128), vec![])
+        let err = query_simulate_swap(deps.as_ref(), unknown, Uint256::from(100u128), vec![], None)
             .unwrap_err();
         assert_eq!(err, ContractError::AssetDoesNotExist {});
     }
@@ -747,7 +754,7 @@ mod tests {
 
         let swap_amount = Uint256::from(10000000000000000u128);
         let response: GetSwapQueryResponse = from_json(
-            query_simulate_swap(deps.as_ref(), pair.token_1, swap_amount, vec![]).unwrap(),
+            query_simulate_swap(deps.as_ref(), pair.token_1, swap_amount, vec![], None).unwrap(),
         )
         .unwrap();
 

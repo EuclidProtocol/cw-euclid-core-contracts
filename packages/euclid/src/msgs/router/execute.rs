@@ -4,6 +4,7 @@ use cosmwasm_std::{Addr, Binary, Uint256};
 use crate::{
     admin::AdminType,
     chain::{ChainType, ChainUid, CosmosChain, EvmChain},
+    cross_chain_user::CrossChainUser,
     error::ContractError,
     msgs::{cross_chain_config::CrossChainConfig, hook::MetaReceive},
     recipient::Recipient,
@@ -80,6 +81,7 @@ pub enum ManageRouterState {
     Vlp {
         vlp_code_id: Option<u64>,
         stable_vlp_code_id: Option<u64>,
+        concentrated_vlp_code_id: Option<u64>,
     },
     LockState {
         locked: bool,
@@ -111,6 +113,13 @@ pub enum ManageRouterState {
     UpdateChainTimeout {
         chain_uid: ChainUid,
         timeout: u64,
+    },
+    /// Fee-admin-gated. `Some(bps)` upserts a per-wallet Euclid-fee override
+    /// (validated against the max-fee bound); `None` removes the entry. An
+    /// absent entry means the wallet uses the pool's configured Euclid fee.
+    SetEuclidFeeOverride {
+        user: CrossChainUser,
+        euclid_fee_bps: Option<u64>,
     },
 }
 

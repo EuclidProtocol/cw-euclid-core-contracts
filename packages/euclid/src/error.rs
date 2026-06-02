@@ -188,6 +188,9 @@ pub enum ContractError {
     #[error("EscrowDoesNotExist")]
     EscrowDoesNotExist {},
 
+    #[error("Token EscrowDoesNotExist: {token}")]
+    TokenEscrowDoesNotExist { token: String },
+
     #[error("EscrowAlreadyExists")]
     EscrowAlreadyExists {},
 

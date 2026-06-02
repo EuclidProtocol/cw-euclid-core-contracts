@@ -144,6 +144,7 @@ mod tests {
             vec![NextSwapPair {
                 token_in: token_a.token.clone(),
                 token_out: token_b.token.clone(),
+                pool_key: None,
                 test_fail: None,
             }],
             vec![],
