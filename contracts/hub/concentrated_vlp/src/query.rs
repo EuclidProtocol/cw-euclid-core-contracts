@@ -29,11 +29,7 @@ pub fn query_simulate_swap(
     ensure!(asset_in.exists(pair), ContractError::AssetDoesNotExist {});
 
     let swap_response = simulate_swap(
-        deps,
-        &STATE,
-        &BALANCES,
-        asset_in,
-        amount_in,
+        deps, &STATE, &BALANCES, asset_in, amount_in,
         // SC-23 Issue 8 will thread the per-wallet override here.
         None,
     )?;
