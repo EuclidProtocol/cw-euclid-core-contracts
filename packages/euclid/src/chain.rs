@@ -96,9 +96,15 @@ pub struct EvmChain {
 }
 
 #[cw_serde]
+pub struct TvmChain {
+    pub chain_id: String,
+}
+
+#[cw_serde]
 pub enum ChainType {
     Cosmos(CosmosChain),
     Evm(EvmChain),
+    Tvm(TvmChain),
     Native {},
 }
 
@@ -115,6 +121,10 @@ impl Chain {
         matches!(self.chain_type, ChainType::Cosmos(_))
     }
 
+    pub fn is_tvm(&self) -> bool {
+        matches!(self.chain_type, ChainType::Tvm(_))
+    }
+
     pub fn cosmos_info(&self) -> Result<CosmosChain, ContractError> {
         match self.chain_type.clone() {
             ChainType::Cosmos(data) => Ok(data),
@@ -122,11 +132,45 @@ impl Chain {
         }
     }
 
+    pub fn tvm_info(&self) -> Result<TvmChain, ContractError> {
+        match self.chain_type.clone() {
+            ChainType::Tvm(data) => Ok(data),
+            _ => Err(ContractError::new("Not a tvm chain")),
+        }
+    }
+
     pub fn get_chain_type_str(&self) -> String {
         match self.chain_type {
             ChainType::Cosmos(_) => "cosmos".to_string(),
             ChainType::Evm(_) => "evm".to_string(),
+            ChainType::Tvm(_) => "tvm".to_string(),
             ChainType::Native {} => "native".to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tvm_tests {
+    use super::*;
+
+    fn tvm_chain() -> Chain {
+        Chain {
+            chain_uid: ChainUid::create("tron".to_string()).unwrap(),
+            factory_address: "0xabc".to_string(),
+            chain_type: ChainType::Tvm(TvmChain {
+                chain_id: "728126428".to_string(),
+            }),
+        }
+    }
+
+    #[test]
+    fn tvm_chain_type_str_and_guards() {
+        let c = tvm_chain();
+        assert_eq!(c.get_chain_type_str(), "tvm");
+        assert!(c.is_tvm());
+        assert!(!c.is_evm());
+        assert!(!c.is_cosmos());
+        assert!(!c.is_native());
+        assert_eq!(c.tvm_info().unwrap().chain_id, "728126428");
     }
 }

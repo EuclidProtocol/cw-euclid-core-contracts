@@ -1,6 +1,8 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
-use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError};
+use cosmwasm_std::{
+    to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Reply, Response, StdError,
+};
 
 use euclid::error::ContractError;
 
@@ -21,6 +23,7 @@ pub fn instantiate(
     _msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    euclid::build_info::set_build_info(deps.storage)?;
 
     Ok(Response::new()
         .add_attribute("method", "instantiate")
@@ -43,6 +46,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
     match msg {
         // New escrow queries
         QueryMsg::MultiQuery { queries } => query_multi_queries(deps, queries),
+        QueryMsg::GetBuildInfo {} => Ok(to_json_binary(&euclid::build_info::build_info(
+            deps.storage,
+            CONTRACT_VERSION,
+        ))?),
     }
 }
 

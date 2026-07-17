@@ -1,29 +1,44 @@
-#[cfg(not(feature = "library"))]
 use cosmwasm_std::{
-    from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Int256, ReplyOn, Response, SubMsg,
-    WasmMsg,
+    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, Int256, ReplyOn, Response,
+    SubMsg, Uint128, WasmMsg,
 };
 use cw20::Cw20Coin;
 use euclid::{
     deposit::DepositTokenResponse,
     error::ContractError,
     events::{deposit_token_event, swap_event},
-    liquidity::{AddLiquidityResponse, RemoveLiquidityResponse},
+    liquidity::{
+        AddLiquidityResponse, ConcentratedAddLiquidityResponse, ConcentratedCollectFeesResponse,
+        ConcentratedCollectProtocolFeesResponse, ConcentratedRemoveLiquidityResponse,
+        RemoveLiquidityResponse,
+    },
     msgs::{
+        self,
         escrow::InstantiateMsg as EscrowInstantiateMsg,
-        vlp::base::{DeregisterDenomResponse, PoolCreationResponse, RegisterDenomResponse},
+        position_token::{self, PositionInfoResponse},
+        vlp::base::{DeregisterDenomResponse, RegisterDenomResponse},
     },
     swap::{SwapResponse, TransferVoucherResponse},
     token::Token,
 };
-use euclid_ibc::{ack::AcknowledgementMsg, router_ibc::RouterCrossChainExecuteMsg};
+use euclid_ibc::wire::msgs::AddLiquiditySendMsg;
+use euclid_ibc::wire::msgs::DeregisterDenomSendMsg;
+use euclid_ibc::wire::msgs::RegisterDenomSendMsg;
+use euclid_ibc::wire::msgs::RequestPoolCreationSendMsg;
+use euclid_ibc::wire::{
+    envelope::{router::RouterReceiveMsg, AcknowledgementMsg},
+    msgs::RequestConcentratedPoolCreationSendMsg,
+};
 
 use crate::{
     reply::{ESCROW_INSTANTIATE_REPLY_ID, LP_INSTANTIATE_REPLY_ID},
     state::{
-        ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY,
+        ADMIN, FEE_STATE, PAIR_TO_VLP, PENDING_ADD_LIQUIDITY, PENDING_CONCENTRATED_ADD_LIQUIDITY,
+        PENDING_CONCENTRATED_COLLECT_FEES, PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES,
+        PENDING_CONCENTRATED_POOL_REQUESTS, PENDING_CONCENTRATED_REMOVE_LIQUIDITY,
         PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_DEPOSIT_TOKEN, PENDING_POOL_REQUESTS,
-        PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT, STATE, TOKEN_TO_ESCROW,
+        PENDING_REMOVE_LIQUIDITY, PENDING_SINGLE_SIDED_LIQUIDITY, PENDING_SWAPS,
+        PENDING_TOKEN_DEPOSIT, POOL_KEY_TO_VLP, POSITION_TOKEN_CONTRACT, STATE, TOKEN_TO_ESCROW,
         VLP_TO_LP_SHARES, VLP_TO_LP_TOKEN,
     },
 };
@@ -31,43 +46,101 @@ use crate::{
 pub fn reusable_internal_ack_call(
     deps: &mut DepsMut,
     env: Env,
-    msg: RouterCrossChainExecuteMsg,
+    msg: RouterReceiveMsg,
     ack: Binary,
     is_native: bool,
 ) -> Result<Response, ContractError> {
+    // When pool_factory owns pool flows, route pool-related acks to it.
+    if crate::execute::proxy::pool_factory_is_initialised(deps)? && msg.is_pool_variant() {
+        let submsg = crate::execute::proxy::pool_factory_on_pool_ack_submsg(
+            deps,
+            to_json_binary(&msg)?,
+            ack,
+            is_native,
+        )?;
+        return Ok(Response::new()
+            .add_attribute("method", "forward_pool_ack_to_pool_factory")
+            .add_submessage(submsg));
+    }
     // Parse the ack based on request
     match msg {
-        RouterCrossChainExecuteMsg::RequestPoolCreation { tx_id, sender, .. } => {
+        RouterReceiveMsg::RequestPoolCreation(RequestPoolCreationSendMsg {
+            tx_id, sender, ..
+        }) => {
             // Process acknowledgment for pool creation
-            let res: AcknowledgementMsg<PoolCreationResponse> = from_json(ack)?;
+            let res: AcknowledgementMsg<AddLiquidityResponse> = from_json(ack)?;
 
             ack_pool_creation(deps.branch(), env, sender.address, res, tx_id, is_native)
         }
+        RouterReceiveMsg::RequestConcentratedPoolCreation(msg) => {
+            let res: AcknowledgementMsg<ConcentratedAddLiquidityResponse> = from_json(ack)?;
+            ack_concentrated_pool_creation(deps.branch(), env, msg, res, is_native)
+        }
 
-        RouterCrossChainExecuteMsg::RegisterDenom { tx_id, sender, .. } => {
+        RouterReceiveMsg::RegisterDenom(RegisterDenomSendMsg { tx_id, sender, .. }) => {
             // Process acknowledgment for pool creation
             let res: AcknowledgementMsg<RegisterDenomResponse> = from_json(ack)?;
 
             ack_register_denom(deps.branch(), env, sender.address, res, tx_id, is_native)
         }
-        RouterCrossChainExecuteMsg::DeregisterDenom { tx_id, sender, .. } => {
+        RouterReceiveMsg::DeregisterDenom(DeregisterDenomSendMsg { tx_id, sender, .. }) => {
             // Process acknowledgment for pool creation
             let res: AcknowledgementMsg<DeregisterDenomResponse> = from_json(ack)?;
 
             ack_deregister_denom(deps.branch(), env, sender.address, res, tx_id, is_native)
         }
 
-        RouterCrossChainExecuteMsg::AddLiquidity { tx_id, sender, .. } => {
+        RouterReceiveMsg::AddLiquidity(AddLiquiditySendMsg { tx_id, sender, .. }) => {
             // Process acknowledgment for add liquidity
             let res: AcknowledgementMsg<AddLiquidityResponse> = from_json(ack)?;
             ack_add_liquidity(deps.branch(), res, sender.address, tx_id, is_native)
         }
-        RouterCrossChainExecuteMsg::RemoveLiquidity(msg) => {
+        RouterReceiveMsg::AddConcentratedLiquidity(msg) => {
+            let res: AcknowledgementMsg<ConcentratedAddLiquidityResponse> = from_json(ack)?;
+            ack_add_concentrated_liquidity(
+                deps.branch(),
+                res,
+                msg.sender.address,
+                msg.tx_id,
+                is_native,
+            )
+        }
+        RouterReceiveMsg::RemoveLiquidity(msg) => {
             // Process acknowledgment for add liquidity
             let res: AcknowledgementMsg<RemoveLiquidityResponse> = from_json(ack)?;
             ack_remove_liquidity(deps.branch(), res, msg.sender.address, msg.tx_id, is_native)
         }
-        RouterCrossChainExecuteMsg::Swap(swap) => {
+        RouterReceiveMsg::RemoveConcentratedLiquidity(msg) => {
+            let res: AcknowledgementMsg<ConcentratedRemoveLiquidityResponse> = from_json(ack)?;
+            ack_remove_concentrated_liquidity(
+                deps.branch(),
+                res,
+                msg.sender.address,
+                msg.tx_id,
+                is_native,
+            )
+        }
+        RouterReceiveMsg::CollectConcentratedFees(msg) => {
+            let res: AcknowledgementMsg<ConcentratedCollectFeesResponse> = from_json(ack)?;
+            ack_collect_concentrated_fees(
+                deps.branch(),
+                res,
+                msg.sender.address,
+                msg.tx_id,
+                is_native,
+            )
+        }
+        RouterReceiveMsg::CollectConcentratedProtocolFees(msg) => {
+            let res: AcknowledgementMsg<ConcentratedCollectProtocolFeesResponse> = from_json(ack)?;
+            ack_collect_concentrated_protocol_fees(
+                deps.branch(),
+                res,
+                msg.sender.address,
+                msg.tx_id,
+                is_native,
+            )
+        }
+        RouterReceiveMsg::Swap(swap) => {
             // Process acknowledgment for swap
             let res: AcknowledgementMsg<SwapResponse> = from_json(ack)?;
             ack_swap_request(
@@ -78,7 +151,7 @@ pub fn reusable_internal_ack_call(
                 is_native,
             )
         }
-        RouterCrossChainExecuteMsg::TransferVoucher(msg) => {
+        RouterReceiveMsg::TransferVoucher(msg) => {
             let res: AcknowledgementMsg<TransferVoucherResponse> = from_json(ack)?;
             ack_transfer_request(
                 deps.branch(),
@@ -89,7 +162,7 @@ pub fn reusable_internal_ack_call(
                 is_native,
             )
         }
-        RouterCrossChainExecuteMsg::DepositToken(deposit) => {
+        RouterReceiveMsg::DepositToken(deposit) => {
             // Process acknowledgment for deposit
             let res: AcknowledgementMsg<DepositTokenResponse> = from_json(ack)?;
             ack_deposit_token_request(
@@ -97,6 +170,16 @@ pub fn reusable_internal_ack_call(
                 res,
                 deposit.sender.address,
                 deposit.tx_id,
+                is_native,
+            )
+        }
+        RouterReceiveMsg::SingleSidedAddLiquidity(msg) => {
+            let res: AcknowledgementMsg<AddLiquidityResponse> = from_json(ack)?;
+            ack_single_sided_add_liquidity(
+                deps.branch(),
+                res,
+                msg.sender.address,
+                msg.tx_id,
                 is_native,
             )
         }
@@ -108,7 +191,7 @@ fn ack_pool_creation(
     deps: DepsMut,
     env: Env,
     sender: String,
-    res: AcknowledgementMsg<PoolCreationResponse>,
+    res: AcknowledgementMsg<AddLiquidityResponse>,
     tx_id: String,
     is_native: bool,
 ) -> Result<Response, ContractError> {
@@ -133,13 +216,13 @@ fn ack_pool_creation(
             PAIR_TO_VLP.save(
                 deps.storage,
                 existing_req.pair_info.get_pair()?.get_tupple(),
-                &data.vlp_contract.clone(),
+                &data.vlp_address.clone(),
             )?;
             // Prepare response
             let mut res = Response::new()
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("method", "pool_creation")
-                .add_attribute("vlp", data.vlp_contract.clone());
+                .add_attribute("vlp", data.vlp_address.clone());
             // Collects PairInfo into a vector of Token Info for easy iteration
             let tokens = existing_req.pair_info.get_vec_token_info();
             for token in tokens {
@@ -187,12 +270,13 @@ fn ack_pool_creation(
                     symbol: lp_token_instantiate_data.symbol,
                     decimals: lp_token_instantiate_data.decimals,
                     initial_balances: vec![Cw20Coin {
-                        amount: data.mint_lp_tokens,
+                        amount: cosmwasm_std::Uint128::try_from(data.mint_lp_tokens)
+                            .map_err(|e| ContractError::Std(e.into()))?,
                         address: data.sender.address,
                     }],
                     mint: lp_token_instantiate_data.mint,
                     marketing: lp_token_instantiate_data.marketing,
-                    vlp: data.vlp_contract.clone(),
+                    vlp: data.vlp_address.clone(),
                     factory: env.contract.address,
                     token_pair: existing_req.pair_info.get_pair()?,
                 })?,
@@ -200,7 +284,14 @@ fn ack_pool_creation(
                 label: "cw20".to_string(),
             });
             // Save lp shares against vlp address
-            VLP_TO_LP_SHARES.save(deps.storage, data.vlp_contract, &data.mint_lp_tokens.into())?;
+            VLP_TO_LP_SHARES.save(
+                deps.storage,
+                data.vlp_address.clone(),
+                &Int256::from(
+                    cosmwasm_std::Uint128::try_from(data.mint_lp_tokens)
+                        .map_err(|e| ContractError::Std(e.into()))?,
+                ),
+            )?;
 
             Ok(res.add_submessage(SubMsg {
                 id: LP_INSTANTIATE_REPLY_ID,
@@ -233,6 +324,127 @@ fn ack_pool_creation(
                 .add_attribute("tx_id", tx_id)
                 .add_attribute("method", "reject_pool_request")
                 .add_attribute("error", err.clone())
+                .add_messages(msgs))
+        }
+    }
+}
+
+fn ack_concentrated_pool_creation(
+    deps: DepsMut,
+    _env: Env,
+    msg: RequestConcentratedPoolCreationSendMsg,
+    res: AcknowledgementMsg<ConcentratedAddLiquidityResponse>,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&msg.sender.address)?;
+    let req_key = (sender.clone(), msg.tx_id.clone());
+    let existing_req = PENDING_CONCENTRATED_POOL_REQUESTS
+        .load(deps.storage, req_key.clone())
+        .map_err(|_| ContractError::NotFound {
+            msg: "pending concentrated pool request not found".to_string(),
+        })?;
+
+    PENDING_CONCENTRATED_POOL_REQUESTS.remove(deps.storage, req_key);
+
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            POOL_KEY_TO_VLP.save(
+                deps.storage,
+                existing_req.pool_key.to_map_key(),
+                &data.vlp_address,
+            )?;
+
+            let mut res = Response::new();
+            for token_info in existing_req.pair_info.get_vec_token_info() {
+                if token_info.token_type.is_voucher() {
+                    continue;
+                }
+
+                let escrow_contract =
+                    TOKEN_TO_ESCROW.may_load(deps.storage, token_info.token.clone())?;
+
+                match escrow_contract {
+                    Some(address) => {
+                        let send_msg = token_info
+                            .token_type
+                            .create_escrow_msg(token_info.amount, address)?;
+                        res = res.add_message(send_msg);
+                    }
+                    None => {
+                        let state = STATE.load(deps.storage)?;
+                        let admins = ADMIN.load(deps.storage)?;
+                        let escrow_code_id = state.escrow_code_id;
+                        let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                            admin: Some(admins.migration_admin.clone().into_string()),
+                            code_id: escrow_code_id,
+                            msg: to_json_binary(&EscrowInstantiateMsg {
+                                token_id: token_info.clone().token,
+                                allowed_denom: Some(token_info.clone().token_type),
+                            })?,
+                            funds: vec![],
+                            label: "escrow".to_string(),
+                        });
+                        PENDING_DEPOSIT_TOKEN.save(
+                            deps.storage,
+                            token_info.clone().token,
+                            &token_info,
+                        )?;
+                        res = res.add_submessage(SubMsg {
+                            id: ESCROW_INSTANTIATE_REPLY_ID,
+                            msg: init_msg,
+                            gas_limit: None,
+                            reply_on: ReplyOn::Always,
+                            payload: Binary::default(),
+                        });
+                    }
+                }
+            }
+
+            let position_token_contract = POSITION_TOKEN_CONTRACT
+                .load(deps.storage)
+                .map_err(|_| ContractError::new("Position token contract not registered"))?;
+
+            let mint_msg = msgs::position_token::ExecuteMsg::Mint(position_token::MintMsg {
+                token_id: data.position_id,
+                token_info: position_token::TokenInfo {
+                    owner: sender.clone(),
+                    token_uri: None,
+                },
+                position_info: position_token::PositionInfo {
+                    liquidity: data.liquidity_delta,
+                    vlp_address: data.vlp_address.clone(),
+                },
+            });
+            res = res.add_message(mint_msg.to_msg(position_token_contract)?);
+
+            Ok(res
+                .add_attribute("tx_id", msg.tx_id)
+                .add_attribute("method", "ack_concentrated_pool_creation")
+                .add_attribute("vlp", data.vlp_address)
+                .add_attribute("position_id", data.position_id)
+                .add_attribute("sender", sender))
+        }
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            let mut msgs: Vec<CosmosMsg> = Vec::new();
+            for token_info in existing_req.pair_info.get_vec_token_info() {
+                if token_info.token_type.is_voucher() {
+                    continue;
+                }
+                let msg = token_info.token_type.create_transfer_msg(
+                    token_info.amount,
+                    sender.to_string(),
+                    None,
+                    None,
+                )?;
+                msgs.push(msg);
+            }
+            Ok(Response::new()
+                .add_attribute("tx_id", msg.tx_id)
+                .add_attribute("method", "reject_concentrated_pool_request")
+                .add_attribute("error", err)
                 .add_messages(msgs))
         }
     }
@@ -393,7 +605,10 @@ fn ack_add_liquidity(
             let shares = VLP_TO_LP_SHARES
                 .may_load(deps.storage, data.vlp_address.clone())?
                 .unwrap_or(Int256::zero());
-            let shares = shares.checked_add(data.mint_lp_tokens.into())?;
+            let shares = shares.checked_add(Int256::from(
+                cosmwasm_std::Uint128::try_from(data.mint_lp_tokens)
+                    .map_err(|e| ContractError::Std(e.into()))?,
+            ))?;
 
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
             // Prepare response
@@ -465,6 +680,144 @@ fn ack_add_liquidity(
     }
 }
 
+fn ack_add_concentrated_liquidity(
+    deps: DepsMut,
+    res: AcknowledgementMsg<ConcentratedAddLiquidityResponse>,
+    sender: String,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender.clone(), tx_id.clone());
+    let liquidity_info = PENDING_CONCENTRATED_ADD_LIQUIDITY
+        .load(deps.storage, req_key.clone())
+        .map_err(|_| ContractError::NotFound {
+            msg: "pending concentrated liquidity request not found".to_string(),
+        })?;
+    PENDING_CONCENTRATED_ADD_LIQUIDITY.remove(deps.storage, req_key);
+
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            let mut res = Response::new().add_attribute("method", "ack_add_concentrated_liquidity");
+            let state = STATE.load(deps.storage)?;
+            let admins = ADMIN.load(deps.storage)?;
+            let escrow_code_id = state.escrow_code_id;
+            for token_info in liquidity_info.pair_info.get_vec_token_info() {
+                // Zero legs (one-sided concentrated adds) moved no funds, so
+                // there is nothing to forward to escrow.
+                if token_info.token_type.is_voucher() || token_info.amount.is_zero() {
+                    continue;
+                }
+                let escrow_contract =
+                    TOKEN_TO_ESCROW.may_load(deps.storage, token_info.token.clone())?;
+                match escrow_contract {
+                    Some(address) => {
+                        let send_msg = token_info
+                            .token_type
+                            .create_escrow_msg(token_info.amount, address)?;
+                        res = res.add_message(send_msg);
+                    }
+                    None => {
+                        let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                            admin: Some(admins.migration_admin.clone().into_string()),
+                            code_id: escrow_code_id,
+                            msg: to_json_binary(&EscrowInstantiateMsg {
+                                token_id: token_info.clone().token,
+                                allowed_denom: Some(token_info.clone().token_type),
+                            })?,
+                            funds: vec![],
+                            label: "escrow".to_string(),
+                        });
+                        PENDING_DEPOSIT_TOKEN.save(
+                            deps.storage,
+                            token_info.clone().token,
+                            &token_info,
+                        )?;
+                        res = res.add_submessage(SubMsg {
+                            id: ESCROW_INSTANTIATE_REPLY_ID,
+                            msg: init_msg,
+                            gas_limit: None,
+                            reply_on: ReplyOn::Always,
+                            payload: Binary::default(),
+                        });
+                    }
+                }
+            }
+
+            let position_token_contract = POSITION_TOKEN_CONTRACT
+                .load(deps.storage)
+                .map_err(|_| ContractError::new("Position token contract not registered"))?;
+
+            let existing_position: Result<PositionInfoResponse, _> = deps.querier.query_wasm_smart(
+                position_token_contract.clone(),
+                &msgs::position_token::QueryMsg::PositionInfo {
+                    token_id: data.position_id.to_string(),
+                },
+            );
+            match existing_position {
+                Ok(_position) => {
+                    // Add liquidity to existing position
+                    let update_position_msg = msgs::position_token::ExecuteMsg::UpdatePosition {
+                        token_id: data.position_id,
+                        liquidity_change: data.liquidity_delta.into(),
+                    };
+                    let update_position_msg =
+                        update_position_msg.to_msg(position_token_contract)?;
+                    res = res.add_message(update_position_msg);
+                }
+                Err(_err) => {
+                    // Mint new position
+                    let mint_msg =
+                        msgs::position_token::ExecuteMsg::Mint(msgs::position_token::MintMsg {
+                            token_id: data.position_id,
+                            token_info: msgs::position_token::TokenInfo {
+                                owner: sender.clone(),
+                                token_uri: None,
+                            },
+                            position_info: msgs::position_token::PositionInfo {
+                                liquidity: data.liquidity_delta,
+                                vlp_address: data.vlp_address.clone(),
+                            },
+                        });
+                    let mint_msg = mint_msg.to_msg(position_token_contract)?;
+                    res = res.add_message(mint_msg);
+                }
+            }
+
+            Ok(res
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("position_id", data.position_id)
+                .add_attribute("sender", sender))
+        }
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            let mut msgs: Vec<CosmosMsg> = Vec::new();
+            for token_info in liquidity_info.pair_info.get_vec_token_info() {
+                // Zero legs (one-sided concentrated adds) moved no funds, so
+                // there is nothing to refund.
+                if token_info.token_type.is_voucher() || token_info.amount.is_zero() {
+                    continue;
+                }
+                let msg = token_info.token_type.create_transfer_msg(
+                    token_info.amount,
+                    sender.to_string(),
+                    None,
+                    None,
+                )?;
+                msgs.push(msg);
+            }
+            Ok(Response::new()
+                .add_attribute("method", "concentrated_liquidity_tx_err_refund")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("error", err)
+                .add_messages(msgs))
+        }
+    }
+}
+
 fn ack_remove_liquidity(
     deps: DepsMut,
     res: AcknowledgementMsg<RemoveLiquidityResponse>,
@@ -475,7 +828,11 @@ fn ack_remove_liquidity(
     let sender = deps.api.addr_validate(&sender)?;
     let req_key = (sender.clone(), tx_id.clone());
     // Validate that the pending exists for the sender
-    let liquidity_info = PENDING_REMOVE_LIQUIDITY.load(deps.storage, req_key.clone())?;
+    let liquidity_info = PENDING_REMOVE_LIQUIDITY
+        .load(deps.storage, req_key.clone())
+        .map_err(|_| ContractError::NotFound {
+            msg: "pending remove liquidity request not found".to_string(),
+        })?;
     // Remove this from pending
     PENDING_REMOVE_LIQUIDITY.remove(deps.storage, req_key.clone());
     // Check whether res is an error or not
@@ -485,7 +842,10 @@ fn ack_remove_liquidity(
             let shares = VLP_TO_LP_SHARES
                 .may_load(deps.storage, data.vlp_address.clone())?
                 .unwrap_or(Int256::zero());
-            let shares = shares.checked_sub(data.burn_lp_tokens.into())?;
+            let shares = shares.checked_sub(Int256::from(
+                cosmwasm_std::Uint128::try_from(data.burn_lp_tokens)
+                    .map_err(|e| ContractError::Std(e.into()))?,
+            ))?;
 
             VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
             // Prepare response
@@ -534,8 +894,186 @@ fn ack_remove_liquidity(
     }
 }
 
+/**
+ * NOTE (M-04): This function is called when the remove liquidity request is acknowledged by the IBC.
+ * It is used to give back the liquidity to the position.
+ * This is needed because the remove liquidity request is sent to the IBC before the liquidity is removed from the position.
+ * So, if the IBC fails, we need to give back the liquidity to the position.
+ * It doesn't burn token because there might be a refund in progress while we are processing this packet.
+ */
+fn ack_remove_concentrated_liquidity(
+    deps: DepsMut,
+    res: AcknowledgementMsg<ConcentratedRemoveLiquidityResponse>,
+    sender: String,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender.clone(), tx_id.clone());
+    let liquidity_info = PENDING_CONCENTRATED_REMOVE_LIQUIDITY
+        .load(deps.storage, req_key.clone())
+        .map_err(|_| ContractError::NotFound {
+            msg: "pending concentrated remove liquidity request not found".to_string(),
+        })?;
+    PENDING_CONCENTRATED_REMOVE_LIQUIDITY.remove(deps.storage, req_key.clone());
+
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            // We already have removed the liquidity from the position in the execute call.
+            let mut res = Response::new()
+                .add_attribute("method", "ack_remove_concentrated_liquidity")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("position_id", data.position_id.to_string())
+                .add_attribute(
+                    "liquidity_removed.amount_0",
+                    data.liquidity_removed.token_1.amount.to_string(),
+                )
+                .add_attribute(
+                    "liquidity_removed.amount_1",
+                    data.liquidity_removed.token_2.amount.to_string(),
+                )
+                .add_attribute("liquidity_delta", data.liquidity_delta.to_string())
+                .add_attribute("liquidity_after", data.liquidity_after.to_string())
+                .add_attribute("vlp_address", data.vlp_address)
+                .add_attribute("position_burned", data.position_burned.to_string());
+
+            // Burn the position token only when the VLP has confirmed the
+            // position is fully cleared (zero liquidity AND zero owed fees).
+            if data.position_burned {
+                let position_token_contract = POSITION_TOKEN_CONTRACT
+                    .load(deps.storage)
+                    .map_err(|_| ContractError::new("Position token contract not registered"))?;
+                let burn_msg = msgs::position_token::ExecuteMsg::Burn {
+                    token_id: data.position_id,
+                };
+                res = res.add_message(burn_msg.to_msg(position_token_contract)?);
+            }
+
+            Ok(res)
+        }
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            let position_token_contract = POSITION_TOKEN_CONTRACT
+                .load(deps.storage)
+                .map_err(|_| ContractError::new("Position token contract not registered"))?;
+
+            // Give back the liquidity to the position
+            let update_position_msg = msgs::position_token::ExecuteMsg::UpdatePosition {
+                token_id: Uint128::new(liquidity_info.position_id),
+                liquidity_change: liquidity_info.liquidity_delta.into(),
+            };
+            let update_position_msg = update_position_msg.to_msg(position_token_contract)?;
+            Ok(Response::new()
+                .add_attribute("method", "concentrated_remove_liquidity_err_refund")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("position_id", liquidity_info.position_id.to_string())
+                .add_attribute("error", err)
+                .add_message(update_position_msg))
+        }
+    }
+}
+
+fn ack_collect_concentrated_fees(
+    deps: DepsMut,
+    res: AcknowledgementMsg<ConcentratedCollectFeesResponse>,
+    sender: String,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender.clone(), tx_id.clone());
+    let collect_info = PENDING_CONCENTRATED_COLLECT_FEES
+        .may_load(deps.storage, req_key.clone())?
+        .ok_or(ContractError::Generic {
+            err: format!(
+                "no pending collect fees request found for sender={}, tx_id={}",
+                sender, tx_id
+            ),
+        })?;
+
+    PENDING_CONCENTRATED_COLLECT_FEES.remove(deps.storage, req_key);
+
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            ensure!(
+                data.pool_key == collect_info.pool_key,
+                ContractError::new("Pool key mismatch")
+            );
+            ensure!(
+                data.position_id.u128() == collect_info.position_id,
+                ContractError::new("Position id mismatch")
+            );
+
+            Ok(Response::new()
+                .add_attribute("method", "ack_collect_concentrated_fees")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("position_id", data.position_id)
+                .add_attribute("amount_0", data.amount_0)
+                .add_attribute("amount_1", data.amount_1))
+        }
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            Ok(Response::new()
+                .add_attribute("method", "ack_collect_concentrated_fees_error")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("position_id", collect_info.position_id.to_string())
+                .add_attribute("error", err))
+        }
+    }
+}
+
+fn ack_collect_concentrated_protocol_fees(
+    deps: DepsMut,
+    res: AcknowledgementMsg<ConcentratedCollectProtocolFeesResponse>,
+    sender: String,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender.clone(), tx_id.clone());
+    let collect_info = PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES
+        .load(deps.storage, req_key.clone())
+        .map_err(|_| ContractError::NotFound {
+            msg: "pending concentrated collect protocol fees request not found".to_string(),
+        })?;
+    PENDING_CONCENTRATED_COLLECT_PROTOCOL_FEES.remove(deps.storage, req_key);
+
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            ensure!(
+                data.pool_key == collect_info.pool_key,
+                ContractError::new("Pool key mismatch")
+            );
+
+            Ok(Response::new()
+                .add_attribute("method", "ack_collect_concentrated_protocol_fees")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("amount_0", data.amount_0)
+                .add_attribute("amount_1", data.amount_1))
+        }
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            Ok(Response::new()
+                .add_attribute("method", "ack_collect_concentrated_protocol_fees_error")
+                .add_attribute("sender", sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("error", err))
+        }
+    }
+}
+
 // Function to process swap acknowledgment
-// TODO this needs to be changed, callback msgs should probably sent to escrow
 fn ack_swap_request(
     deps: DepsMut,
     res: AcknowledgementMsg<SwapResponse>,
@@ -705,6 +1243,1727 @@ fn ack_transfer_request(
             Ok(Response::new()
                 .add_attribute("method", "transfer_error")
                 .add_attribute("error", err.clone()))
+        }
+    }
+}
+
+// Process single-sided add-liquidity acknowledgment.
+// Success: increment VLP_TO_LP_SHARES, send asset_in to escrow, transfer
+// partner fee (if any) to its recipient, mint LP CW20.
+// Failure: refund amount_in + partner_fee_amount to user (or return Err on native).
+fn ack_single_sided_add_liquidity(
+    deps: DepsMut,
+    res: AcknowledgementMsg<AddLiquidityResponse>,
+    sender: String,
+    tx_id: String,
+    is_native: bool,
+) -> Result<Response, ContractError> {
+    let sender = deps.api.addr_validate(&sender)?;
+    let req_key = (sender.clone(), tx_id.clone());
+    let pending = PENDING_SINGLE_SIDED_LIQUIDITY.load(deps.storage, req_key.clone())?;
+    PENDING_SINGLE_SIDED_LIQUIDITY.remove(deps.storage, req_key);
+
+    match res {
+        AcknowledgementMsg::Ok(data) => {
+            let shares = VLP_TO_LP_SHARES
+                .may_load(deps.storage, data.vlp_address.clone())?
+                .unwrap_or(Int256::zero());
+            let shares = shares.checked_add(Int256::from(
+                cosmwasm_std::Uint128::try_from(data.mint_lp_tokens)
+                    .map_err(|e| ContractError::Std(e.into()))?,
+            ))?;
+            VLP_TO_LP_SHARES.save(deps.storage, data.vlp_address.clone(), &shares)?;
+
+            let mut res = Response::new()
+                .add_attribute("method", "ack_single_sided_add_liquidity")
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("sender", sender.to_string())
+                .add_attribute("partner_fee_amount", pending.partner_fee_amount)
+                .add_attribute(
+                    "partner_fee_recipient",
+                    pending.partner_fee_recipient.to_string(),
+                );
+
+            // Track collected partner fees so they surface in fee queries.
+            if !pending.partner_fee_amount.is_zero() {
+                let mut fee_state = FEE_STATE.load(deps.storage)?;
+                fee_state.partner_fees_collected.add_fee(
+                    pending.asset_in.token.to_string(),
+                    pending.partner_fee_amount,
+                );
+                FEE_STATE.save(deps.storage, &fee_state)?;
+            }
+
+            // Escrow asset_in. Vouchers never reach this path (factory rejects them).
+            if !pending.asset_in.token_type.is_voucher() {
+                let escrow_address =
+                    TOKEN_TO_ESCROW.load(deps.storage, pending.asset_in.token.clone())?;
+                let send_msg = pending
+                    .asset_in
+                    .token_type
+                    .create_escrow_msg(pending.amount_in, escrow_address)?;
+                res = res.add_message(send_msg);
+
+                // Transfer partner fee from factory to recipient (if non-zero).
+                if !pending.partner_fee_amount.is_zero() {
+                    let partner_msg = pending.asset_in.token_type.create_transfer_msg(
+                        pending.partner_fee_amount,
+                        pending.partner_fee_recipient.to_string(),
+                        None,
+                        None,
+                    )?;
+                    res = res.add_message(partner_msg);
+                }
+            }
+
+            // Mint LP CW20 to user.
+            let lp_token_address = VLP_TO_LP_TOKEN.load(deps.storage, data.vlp_address)?;
+            let lp_mint_msg = CosmosMsg::Wasm(WasmMsg::Execute {
+                contract_addr: lp_token_address.into_string(),
+                msg: to_json_binary(&euclid::msgs::lp_token::msg::ExecuteMsg::Mint {
+                    recipient: pending.sender,
+                    amount: data.mint_lp_tokens,
+                })?,
+                funds: vec![],
+            });
+
+            Ok(res.add_message(lp_mint_msg))
+        }
+        AcknowledgementMsg::Error(err) => {
+            if is_native {
+                return Err(ContractError::new(&err));
+            }
+            // Full refund: amount_in + partner_fee_amount (the original deposit total).
+            let refund_amount = pending.amount_in.checked_add(pending.partner_fee_amount)?;
+            let mut response = Response::new()
+                .add_attribute("method", "single_sided_add_liquidity_err_refund")
+                .add_attribute("refund_to", &sender)
+                .add_attribute("tx_id", tx_id)
+                .add_attribute("refund_amount", refund_amount)
+                .add_attribute("error", err);
+
+            if !pending.asset_in.token_type.is_voucher() {
+                let refund_msg = pending.asset_in.token_type.create_transfer_msg(
+                    refund_amount,
+                    sender.to_string(),
+                    None,
+                    None,
+                )?;
+                response = response.add_message(refund_msg);
+            }
+
+            Ok(response)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmwasm_std::{
+        attr,
+        testing::{mock_dependencies, mock_env},
+        to_json_binary, Addr, Uint128, Uint256,
+    };
+    use euclid::{
+        chain::ChainUid,
+        cross_chain_user::CrossChainUser,
+        deposit::DepositTokenRequest,
+        liquidity::{AddLiquidityRequest, AddLiquidityResponse, RemoveLiquidityRequest},
+        msgs::vlp::base::{DeregisterDenomResponse, PoolCreationResponse, RegisterDenomResponse},
+        swap::{SwapRequest, TransferVoucherResponse},
+        token::{
+            Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom, TokenWithDenomAndAmount,
+        },
+    };
+    use euclid_ibc::wire::msgs::AddLiquiditySendMsg;
+    use euclid_ibc::wire::msgs::DeregisterDenomSendMsg;
+    use euclid_ibc::wire::msgs::RegisterDenomSendMsg;
+    use euclid_ibc::wire::msgs::RequestPoolCreationSendMsg;
+    use euclid_ibc::wire::{
+        envelope::{router::RouterReceiveMsg, AcknowledgementMsg},
+        msgs::{DepositTokenSendMsg, RemoveLiquiditySendMsg, SwapSendMsg, TransferVoucherSendMsg},
+    };
+
+    use crate::{
+        state::{
+            DenomRegisterDeregisterRequest, PENDING_ADD_LIQUIDITY,
+            PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS, PENDING_POOL_REQUESTS,
+            PENDING_REMOVE_LIQUIDITY, PENDING_SWAPS, PENDING_TOKEN_DEPOSIT,
+        },
+        testing::helpers::{init, native_token, seed_escrow, smart_token, TEST_CHAIN_UID},
+    };
+
+    // -----------------------------------------------------------------------
+    // Shared helpers
+    // -----------------------------------------------------------------------
+
+    fn chain_uid() -> ChainUid {
+        ChainUid::create(TEST_CHAIN_UID.to_string()).unwrap()
+    }
+
+    fn cross_chain_user(addr: &str) -> CrossChainUser {
+        CrossChainUser {
+            chain_uid: chain_uid(),
+            address: addr.to_string(),
+        }
+    }
+
+    fn native_pair_with_denom_and_amount(
+        token_a: &str,
+        denom_a: &str,
+        amount_a: u128,
+        token_b: &str,
+        denom_b: &str,
+        amount_b: u128,
+    ) -> PairWithDenomAndAmount {
+        // Sort so token_1 <= token_2 (required by Pair)
+        let (t1, d1, a1, t2, d2, a2) = if token_a <= token_b {
+            (token_a, denom_a, amount_a, token_b, denom_b, amount_b)
+        } else {
+            (token_b, denom_b, amount_b, token_a, denom_a, amount_a)
+        };
+        PairWithDenomAndAmount {
+            token_1: TokenWithDenomAndAmount {
+                token: Token::create(t1.to_string()).unwrap(),
+                amount: Uint256::from(a1),
+                token_type: TokenType::Native {
+                    denom: d1.to_string(),
+                    decimals: None,
+                },
+            },
+            token_2: TokenWithDenomAndAmount {
+                token: Token::create(t2.to_string()).unwrap(),
+                amount: Uint256::from(a2),
+                token_type: TokenType::Native {
+                    denom: d2.to_string(),
+                    decimals: None,
+                },
+            },
+        }
+    }
+
+    fn add_liquidity_msg(sender_addr: &str, tx_id: &str) -> RouterReceiveMsg {
+        RouterReceiveMsg::AddLiquidity(AddLiquiditySendMsg {
+            sender: cross_chain_user(sender_addr),
+            slippage_tolerance_bps: 50,
+            pair: native_pair_with_denom_and_amount("aaa", "uaaa", 1000, "bbb", "ubbb", 1000),
+            tx_id: tx_id.to_string(),
+        })
+    }
+
+    // -----------------------------------------------------------------------
+    // ack_pool_creation tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_ack_pool_creation_missing_pending_returns_error() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let msg = RouterReceiveMsg::RequestPoolCreation(RequestPoolCreationSendMsg {
+            sender: cross_chain_user(sender.as_str()),
+            tx_id: "tx1".to_string(),
+            pair: native_pair_with_denom_and_amount("aaa", "uaaa", 500, "bbb", "ubbb", 500),
+            pool_config: euclid::msgs::vlp::base::PoolConfig::ConstantProduct {},
+            slippage_tolerance_bps: 50,
+        });
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(AddLiquidityResponse {
+            vlp_address: "vlp1".to_string(),
+            tx_id: "tx1".to_string(),
+            mint_lp_tokens: Uint256::from(100u128),
+            sender: cross_chain_user(sender.as_str()),
+        }))
+        .unwrap();
+
+        let err = reusable_internal_ack_call(&mut deps.as_mut(), mock_env(), msg, ack, false)
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            ContractError::PoolRequestDoesNotExists { req } if req == "tx1"
+        ));
+    }
+
+    #[test]
+    fn test_ack_pool_creation_error_is_native_returns_err() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_native".to_string();
+        let pair = native_pair_with_denom_and_amount("aaa", "uaaa", 500, "bbb", "ubbb", 500);
+
+        PENDING_POOL_REQUESTS
+            .save(
+                deps.as_mut().storage,
+                (sender.clone(), tx_id.clone()),
+                &crate::state::PoolCreateRequest {
+                    tx_id: tx_id.clone(),
+                    sender: sender.clone(),
+                    pair_info: pair.clone(),
+                    lp_token_instantiate_msg: cw20_base::msg::InstantiateMsg {
+                        name: "LP".to_string(),
+                        symbol: "LP".to_string(),
+                        decimals: 6,
+                        initial_balances: vec![],
+                        mint: None,
+                        marketing: None,
+                    },
+                },
+            )
+            .unwrap();
+
+        let msg = RouterReceiveMsg::RequestPoolCreation(RequestPoolCreationSendMsg {
+            sender: cross_chain_user(sender.as_str()),
+            tx_id: tx_id.clone(),
+            pair,
+            pool_config: euclid::msgs::vlp::base::PoolConfig::ConstantProduct {},
+            slippage_tolerance_bps: 50,
+        });
+        let ack = to_json_binary(&AcknowledgementMsg::<AddLiquidityResponse>::Error(
+            "hub_err".to_string(),
+        ))
+        .unwrap();
+
+        let err =
+            reusable_internal_ack_call(&mut deps.as_mut(), mock_env(), msg, ack, true).unwrap_err();
+
+        assert_eq!(err, ContractError::new("hub_err"));
+    }
+
+    #[test]
+    fn test_ack_pool_creation_error_not_native_returns_ok_with_reject_method() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_reject".to_string();
+        let pair = native_pair_with_denom_and_amount("aaa", "uaaa", 500, "bbb", "ubbb", 500);
+
+        PENDING_POOL_REQUESTS
+            .save(
+                deps.as_mut().storage,
+                (sender.clone(), tx_id.clone()),
+                &crate::state::PoolCreateRequest {
+                    tx_id: tx_id.clone(),
+                    sender: sender.clone(),
+                    pair_info: pair.clone(),
+                    lp_token_instantiate_msg: cw20_base::msg::InstantiateMsg {
+                        name: "LP".to_string(),
+                        symbol: "LP".to_string(),
+                        decimals: 6,
+                        initial_balances: vec![],
+                        mint: None,
+                        marketing: None,
+                    },
+                },
+            )
+            .unwrap();
+
+        let msg = RouterReceiveMsg::RequestPoolCreation(RequestPoolCreationSendMsg {
+            sender: cross_chain_user(sender.as_str()),
+            tx_id: tx_id.clone(),
+            pair,
+            pool_config: euclid::msgs::vlp::base::PoolConfig::ConstantProduct {},
+            slippage_tolerance_bps: 50,
+        });
+        let ack = to_json_binary(&AcknowledgementMsg::<AddLiquidityResponse>::Error(
+            "fail".to_string(),
+        ))
+        .unwrap();
+
+        let res =
+            reusable_internal_ack_call(&mut deps.as_mut(), mock_env(), msg, ack, false).unwrap();
+
+        assert!(res
+            .attributes
+            .contains(&attr("method", "reject_pool_request")));
+    }
+
+    // -----------------------------------------------------------------------
+    // ack_register_denom tests
+    // -----------------------------------------------------------------------
+
+    fn seed_pending_denom_register(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+        sender: &Addr,
+        tx_id: &str,
+        token: TokenWithDenom,
+    ) {
+        PENDING_DENOM_REGISTER_DEREGISTER_REQUESTS
+            .save(
+                deps.as_mut().storage,
+                (sender.clone(), tx_id.to_string()),
+                &DenomRegisterDeregisterRequest {
+                    tx_id: tx_id.to_string(),
+                    sender: sender.clone(),
+                    token,
+                },
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn test_ack_register_denom_missing_pending_returns_error() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let msg = RouterReceiveMsg::RegisterDenom(RegisterDenomSendMsg {
+            sender: cross_chain_user(sender.as_str()),
+            tx_id: "no_such_tx".to_string(),
+            token: native_token("aaa", "uaaa"),
+        });
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(RegisterDenomResponse {})).unwrap();
+
+        let err = reusable_internal_ack_call(&mut deps.as_mut(), mock_env(), msg, ack, false)
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            ContractError::PoolRequestDoesNotExists { req } if req == "no_such_tx"
+        ));
+    }
+
+    #[test]
+    fn test_ack_register_denom_error_not_native_returns_ok_with_reject_method() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_rd_err";
+        let token = native_token("aaa", "uaaa");
+        seed_pending_denom_register(&mut deps, &sender, tx_id, token.clone());
+
+        let msg = RouterReceiveMsg::RegisterDenom(RegisterDenomSendMsg {
+            sender: cross_chain_user(sender.as_str()),
+            tx_id: tx_id.to_string(),
+            token,
+        });
+        let ack = to_json_binary(&AcknowledgementMsg::<RegisterDenomResponse>::Error(
+            "bad".to_string(),
+        ))
+        .unwrap();
+
+        let res =
+            reusable_internal_ack_call(&mut deps.as_mut(), mock_env(), msg, ack, false).unwrap();
+
+        assert!(res
+            .attributes
+            .contains(&attr("method", "reject_denom_register")));
+    }
+
+    #[test]
+    fn test_ack_register_denom_ok_with_existing_escrow_adds_message_no_submsg() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_rd_ok_existing";
+        let token = native_token("aaa", "uaaa");
+
+        // seed an existing escrow
+        seed_escrow(&mut deps, "aaa", "escrow1");
+        seed_pending_denom_register(&mut deps, &sender, tx_id, token.clone());
+
+        let msg = RouterReceiveMsg::RegisterDenom(RegisterDenomSendMsg {
+            sender: cross_chain_user(sender.as_str()),
+            tx_id: tx_id.to_string(),
+            token,
+        });
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(RegisterDenomResponse {})).unwrap();
+
+        let res =
+            reusable_internal_ack_call(&mut deps.as_mut(), mock_env(), msg, ack, false).unwrap();
+
+        assert!(res.attributes.contains(&attr("create_escrow", "false")));
+        assert_eq!(res.messages.len(), 1);
+        // When escrow exists, a plain CosmosMsg (reply_on Never) is emitted, not a SubMsg reply
+        assert_eq!(res.messages[0].reply_on, ReplyOn::Never);
+    }
+
+    #[test]
+    fn test_ack_register_denom_ok_without_existing_escrow_adds_submsg() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_rd_ok_new";
+        let token = native_token("aaa", "uaaa");
+
+        // no escrow seeded
+        seed_pending_denom_register(&mut deps, &sender, tx_id, token.clone());
+
+        let msg = RouterReceiveMsg::RegisterDenom(RegisterDenomSendMsg {
+            sender: cross_chain_user(sender.as_str()),
+            tx_id: tx_id.to_string(),
+            token,
+        });
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(RegisterDenomResponse {})).unwrap();
+
+        let res =
+            reusable_internal_ack_call(&mut deps.as_mut(), mock_env(), msg, ack, false).unwrap();
+
+        assert!(res.attributes.contains(&attr("create_escrow", "true")));
+        assert_eq!(res.messages.len(), 1);
+        // When no escrow exists, an escrow instantiate SubMsg with reply_on Always is emitted
+        assert_eq!(res.messages[0].reply_on, ReplyOn::Always);
+    }
+
+    // -----------------------------------------------------------------------
+    // ack_deregister_denom tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_ack_deregister_denom_missing_pending_returns_error() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let msg = RouterReceiveMsg::DeregisterDenom(DeregisterDenomSendMsg {
+            sender: cross_chain_user(sender.as_str()),
+            tx_id: "no_tx".to_string(),
+            token: native_token("aaa", "uaaa"),
+        });
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(DeregisterDenomResponse {})).unwrap();
+
+        let err = reusable_internal_ack_call(&mut deps.as_mut(), mock_env(), msg, ack, false)
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            ContractError::PoolRequestDoesNotExists { req } if req == "no_tx"
+        ));
+    }
+
+    #[test]
+    fn test_ack_deregister_denom_error_not_native_returns_ok_with_reject_method() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_dd_err";
+        let token = native_token("aaa", "uaaa");
+        seed_pending_denom_register(&mut deps, &sender, tx_id, token.clone());
+
+        let msg = RouterReceiveMsg::DeregisterDenom(DeregisterDenomSendMsg {
+            sender: cross_chain_user(sender.as_str()),
+            tx_id: tx_id.to_string(),
+            token,
+        });
+        let ack = to_json_binary(&AcknowledgementMsg::<DeregisterDenomResponse>::Error(
+            "fail".to_string(),
+        ))
+        .unwrap();
+
+        let res =
+            reusable_internal_ack_call(&mut deps.as_mut(), mock_env(), msg, ack, false).unwrap();
+
+        assert!(res
+            .attributes
+            .contains(&attr("method", "reject_denom_deregister")));
+    }
+
+    #[test]
+    fn test_ack_deregister_denom_ok_returns_correct_attributes_and_message() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_dd_ok";
+        let token = native_token("aaa", "uaaa");
+
+        // Must have escrow in TOKEN_TO_ESCROW for the deregister Ok path
+        seed_escrow(&mut deps, "aaa", "escrow1");
+        seed_pending_denom_register(&mut deps, &sender, tx_id, token.clone());
+
+        let msg = RouterReceiveMsg::DeregisterDenom(DeregisterDenomSendMsg {
+            sender: cross_chain_user(sender.as_str()),
+            tx_id: tx_id.to_string(),
+            token,
+        });
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(DeregisterDenomResponse {})).unwrap();
+
+        let res =
+            reusable_internal_ack_call(&mut deps.as_mut(), mock_env(), msg, ack, false).unwrap();
+
+        assert!(res
+            .attributes
+            .contains(&attr("method", "ack_deregister_denom")));
+        assert_eq!(res.messages.len(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // ack_add_liquidity tests
+    // -----------------------------------------------------------------------
+
+    fn seed_pending_add_liquidity(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+        sender: &Addr,
+        tx_id: &str,
+    ) {
+        let pair = native_pair_with_denom_and_amount("aaa", "uaaa", 1000, "bbb", "ubbb", 1000);
+        PENDING_ADD_LIQUIDITY
+            .save(
+                deps.as_mut().storage,
+                (sender.clone(), tx_id.to_string()),
+                &AddLiquidityRequest {
+                    sender: sender.to_string(),
+                    tx_id: tx_id.to_string(),
+                    pair_info: pair,
+                },
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn test_ack_add_liquidity_missing_pending_returns_error() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            add_liquidity_msg(sender.as_str(), "no_tx"),
+            to_json_binary(&AcknowledgementMsg::Ok(
+                euclid::liquidity::AddLiquidityResponse {
+                    mint_lp_tokens: Uint256::zero(),
+                    vlp_address: "vlp".to_string(),
+                    tx_id: "no_tx".to_string(),
+                    sender: cross_chain_user(sender.as_str()),
+                },
+            ))
+            .unwrap(),
+            false,
+        );
+
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_ack_add_liquidity_error_is_native_returns_err() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_al_native";
+        seed_pending_add_liquidity(&mut deps, &sender, tx_id);
+
+        let ack = to_json_binary(
+            &AcknowledgementMsg::<euclid::liquidity::AddLiquidityResponse>::Error(
+                "hub_fail".to_string(),
+            ),
+        )
+        .unwrap();
+
+        let err = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            add_liquidity_msg(sender.as_str(), tx_id),
+            ack,
+            true,
+        )
+        .unwrap_err();
+
+        assert_eq!(err, ContractError::new("hub_fail"));
+    }
+
+    #[test]
+    fn test_ack_add_liquidity_error_not_native_returns_ok_with_refund_method() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_al_refund";
+        seed_pending_add_liquidity(&mut deps, &sender, tx_id);
+
+        let ack = to_json_binary(
+            &AcknowledgementMsg::<euclid::liquidity::AddLiquidityResponse>::Error(
+                "fail".to_string(),
+            ),
+        )
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            add_liquidity_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        assert!(res
+            .attributes
+            .contains(&attr("method", "liquidity_tx_err_refund")));
+    }
+
+    // -----------------------------------------------------------------------
+    // ack_remove_liquidity tests
+    // -----------------------------------------------------------------------
+
+    fn remove_liquidity_msg(sender_addr: &str, tx_id: &str) -> RouterReceiveMsg {
+        let pair = Pair::new(
+            Token::create("aaa".to_string()).unwrap(),
+            Token::create("bbb".to_string()).unwrap(),
+        )
+        .unwrap();
+        RouterReceiveMsg::RemoveLiquidity(RemoveLiquiditySendMsg {
+            sender: cross_chain_user(sender_addr),
+            lp_allocation: Uint256::from(50u128),
+            pair,
+            recipient: cross_chain_user(sender_addr),
+            tx_id: tx_id.to_string(),
+        })
+    }
+
+    fn seed_pending_remove_liquidity(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+        sender: &Addr,
+        tx_id: &str,
+    ) {
+        let pair = Pair::new(
+            Token::create("aaa".to_string()).unwrap(),
+            Token::create("bbb".to_string()).unwrap(),
+        )
+        .unwrap();
+        PENDING_REMOVE_LIQUIDITY
+            .save(
+                deps.as_mut().storage,
+                (sender.clone(), tx_id.to_string()),
+                &RemoveLiquidityRequest {
+                    sender: sender.to_string(),
+                    tx_id: tx_id.to_string(),
+                    lp_allocation: Uint256::from(50u128),
+                    pair,
+                    lp_token: Addr::unchecked("lp_token_addr"),
+                },
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn test_ack_remove_liquidity_missing_pending_returns_error() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            remove_liquidity_msg(sender.as_str(), "no_tx"),
+            to_json_binary(&AcknowledgementMsg::<
+                euclid::liquidity::RemoveLiquidityResponse,
+            >::Error("x".to_string()))
+            .unwrap(),
+            false,
+        );
+
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_ack_remove_liquidity_error_is_native_returns_err() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_rl_native";
+        seed_pending_remove_liquidity(&mut deps, &sender, tx_id);
+
+        let ack = to_json_binary(&AcknowledgementMsg::<
+            euclid::liquidity::RemoveLiquidityResponse,
+        >::Error("hub_fail".to_string()))
+        .unwrap();
+
+        let err = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            remove_liquidity_msg(sender.as_str(), tx_id),
+            ack,
+            true,
+        )
+        .unwrap_err();
+
+        assert_eq!(err, ContractError::new("hub_fail"));
+    }
+
+    #[test]
+    fn test_ack_remove_liquidity_error_not_native_returns_ok_with_refund_and_lp_transfer() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_rl_refund";
+        seed_pending_remove_liquidity(&mut deps, &sender, tx_id);
+
+        let ack = to_json_binary(&AcknowledgementMsg::<
+            euclid::liquidity::RemoveLiquidityResponse,
+        >::Error("fail".to_string()))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            remove_liquidity_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        assert!(res
+            .attributes
+            .contains(&attr("method", "liquidity_tx_err_refund")));
+        assert_eq!(res.messages.len(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // ack_swap_request tests
+    // -----------------------------------------------------------------------
+
+    fn swap_msg(sender_addr: &str, tx_id: &str) -> RouterReceiveMsg {
+        RouterReceiveMsg::Swap(SwapSendMsg {
+            sender: cross_chain_user(sender_addr),
+            asset_in: native_token("aaa", "uaaa"),
+            amount_in: Uint256::from(100u128),
+            asset_out: Token::create("bbb".to_string()).unwrap(),
+            min_amount_out: Uint256::from(90u128),
+            swaps: vec![],
+            recipients: vec![],
+            partner_fee_amount: Uint256::zero(),
+            partner_fee_recipient: cross_chain_user(sender_addr),
+            tx_id: tx_id.to_string(),
+        })
+    }
+
+    fn voucher_swap_msg(sender_addr: &str, tx_id: &str) -> RouterReceiveMsg {
+        RouterReceiveMsg::Swap(SwapSendMsg {
+            sender: cross_chain_user(sender_addr),
+            asset_in: crate::testing::helpers::voucher_token("aaa"),
+            amount_in: Uint256::from(100u128),
+            asset_out: Token::create("bbb".to_string()).unwrap(),
+            min_amount_out: Uint256::from(90u128),
+            swaps: vec![],
+            recipients: vec![],
+            partner_fee_amount: Uint256::zero(),
+            partner_fee_recipient: cross_chain_user(sender_addr),
+            tx_id: tx_id.to_string(),
+        })
+    }
+
+    fn seed_pending_swap(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+        sender: &Addr,
+        tx_id: &str,
+        asset_in: TokenWithDenom,
+    ) {
+        PENDING_SWAPS
+            .save(
+                deps.as_mut().storage,
+                (sender.clone(), tx_id.to_string()),
+                &SwapRequest {
+                    sender: sender.to_string(),
+                    tx_id: tx_id.to_string(),
+                    asset_in,
+                    amount_in: Uint256::from(100u128),
+                    asset_out: Token::create("bbb".to_string()).unwrap(),
+                    min_amount_out: Uint256::from(90u128),
+                    swaps: vec![],
+                    recipients: vec![],
+                    partner_fee_amount: Uint256::zero(),
+                    partner_fee_recipient: Addr::unchecked(sender.as_str()),
+                },
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn test_ack_swap_request_missing_pending_returns_error() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            swap_msg(sender.as_str(), "no_tx"),
+            to_json_binary(&AcknowledgementMsg::Ok(euclid::swap::SwapResponse {
+                amount_out: Uint256::from(90u128),
+                tx_id: "no_tx".to_string(),
+            }))
+            .unwrap(),
+            false,
+        );
+
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_ack_swap_request_error_is_native_returns_err() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_sw_native";
+        seed_pending_swap(&mut deps, &sender, tx_id, native_token("aaa", "uaaa"));
+
+        let ack = to_json_binary(&AcknowledgementMsg::<euclid::swap::SwapResponse>::Error(
+            "hub_fail".to_string(),
+        ))
+        .unwrap();
+
+        let err = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            swap_msg(sender.as_str(), tx_id),
+            ack,
+            true,
+        )
+        .unwrap_err();
+
+        assert_eq!(err, ContractError::new("hub_fail"));
+    }
+
+    #[test]
+    fn test_ack_swap_request_error_not_native_returns_ok_with_failed_swap_method() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_sw_fail";
+        seed_pending_swap(&mut deps, &sender, tx_id, native_token("aaa", "uaaa"));
+
+        let ack = to_json_binary(&AcknowledgementMsg::<euclid::swap::SwapResponse>::Error(
+            "fail".to_string(),
+        ))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            swap_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        assert!(res
+            .attributes
+            .contains(&attr("method", "process_failed_swap")));
+    }
+
+    #[test]
+    fn test_ack_swap_request_ok_with_voucher_asset_in_no_escrow_msg() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_sw_ok_voucher";
+        seed_pending_swap(
+            &mut deps,
+            &sender,
+            tx_id,
+            crate::testing::helpers::voucher_token("aaa"),
+        );
+
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(euclid::swap::SwapResponse {
+            amount_out: Uint256::from(90u128),
+            tx_id: tx_id.to_string(),
+        }))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            voucher_swap_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        assert!(res
+            .attributes
+            .contains(&attr("method", "process_successfull_swap")));
+        // No CosmosMsg because asset_in is a voucher (not escrowed)
+        assert!(res.messages.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // ack_deposit_token_request tests
+    // -----------------------------------------------------------------------
+
+    fn deposit_msg(sender_addr: &str, tx_id: &str) -> RouterReceiveMsg {
+        RouterReceiveMsg::DepositToken(DepositTokenSendMsg {
+            sender: cross_chain_user(sender_addr),
+            asset_in: native_token("aaa", "uaaa"),
+            amount_in: Uint256::from(100u128),
+            recipients: vec![],
+            tx_id: tx_id.to_string(),
+        })
+    }
+
+    fn seed_pending_deposit(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+        sender: &Addr,
+        tx_id: &str,
+    ) {
+        PENDING_TOKEN_DEPOSIT
+            .save(
+                deps.as_mut().storage,
+                (sender.clone(), tx_id.to_string()),
+                &DepositTokenRequest {
+                    sender: sender.to_string(),
+                    tx_id: tx_id.to_string(),
+                    asset_in: native_token("aaa", "uaaa"),
+                    amount_in: Uint256::from(100u128),
+                },
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn test_ack_deposit_token_request_missing_pending_returns_error() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            deposit_msg(sender.as_str(), "no_tx"),
+            to_json_binary(&AcknowledgementMsg::Ok(
+                euclid::deposit::DepositTokenResponse {
+                    amount: Uint256::from(100u128),
+                    token: Token::create("aaa".to_string()).unwrap(),
+                    sender: cross_chain_user(sender.as_str()),
+                },
+            ))
+            .unwrap(),
+            false,
+        );
+
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn test_ack_deposit_token_request_error_not_native_returns_ok_with_failed_deposit_method() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_dt_fail";
+        seed_pending_deposit(&mut deps, &sender, tx_id);
+
+        let ack = to_json_binary(
+            &AcknowledgementMsg::<euclid::deposit::DepositTokenResponse>::Error("fail".to_string()),
+        )
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            deposit_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        assert!(res
+            .attributes
+            .contains(&attr("method", "process_failed_deposit_token")));
+    }
+
+    // -----------------------------------------------------------------------
+    // ack_transfer_request tests
+    // -----------------------------------------------------------------------
+
+    fn transfer_msg(sender_addr: &str, tx_id: &str) -> RouterReceiveMsg {
+        RouterReceiveMsg::TransferVoucher(TransferVoucherSendMsg {
+            sender: cross_chain_user(sender_addr),
+            token: Token::create("aaa".to_string()).unwrap(),
+            amount: Uint256::from(50u128),
+            from: None,
+            recipients: vec![],
+            tx_id: tx_id.to_string(),
+        })
+    }
+
+    #[test]
+    fn test_ack_transfer_request_ok_returns_transfer_method() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(TransferVoucherResponse {
+            token: Token::create("aaa".to_string()).unwrap(),
+            tx_id: "tx_tr_ok".to_string(),
+        }))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            transfer_msg(sender.as_str(), "tx_tr_ok"),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        assert!(res.attributes.contains(&attr("method", "transfer")));
+    }
+
+    #[test]
+    fn test_ack_transfer_request_error_not_native_returns_transfer_error_method() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let ack = to_json_binary(&AcknowledgementMsg::<TransferVoucherResponse>::Error(
+            "transfer_fail".to_string(),
+        ))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            transfer_msg(sender.as_str(), "tx_tr_err"),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        assert!(res.attributes.contains(&attr("method", "transfer_error")));
+    }
+
+    #[test]
+    fn test_ack_transfer_request_error_is_native_returns_err() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let ack = to_json_binary(&AcknowledgementMsg::<TransferVoucherResponse>::Error(
+            "native_fail".to_string(),
+        ))
+        .unwrap();
+
+        let err = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            transfer_msg(sender.as_str(), "tx_tr_nat"),
+            ack,
+            true,
+        )
+        .unwrap_err();
+
+        assert_eq!(err, ContractError::new("native_fail"));
+    }
+
+    // -----------------------------------------------------------------------
+    // ack_single_sided_add_liquidity tests
+    // -----------------------------------------------------------------------
+
+    fn single_sided_msg(sender_addr: &str, tx_id: &str) -> RouterReceiveMsg {
+        RouterReceiveMsg::SingleSidedAddLiquidity(
+            euclid_ibc::wire::msgs::SingleSidedAddLiquiditySendMsg {
+                sender: cross_chain_user(sender_addr),
+                asset_in: native_token("aaa", "uaaa"),
+                amount_in: Uint256::from(1000u128),
+                swap_amount: Uint256::from(500u128),
+                pair: euclid::token::Pair::new(
+                    Token::create("aaa".to_string()).unwrap(),
+                    Token::create("bbb".to_string()).unwrap(),
+                )
+                .unwrap(),
+                swaps: vec![],
+                min_lp_out: Uint256::from(1u128),
+                partner_fee_amount: Uint256::zero(),
+                partner_fee_recipient: cross_chain_user(sender_addr),
+                tx_id: tx_id.to_string(),
+            },
+        )
+    }
+
+    fn seed_pending_single_sided(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+        sender: &Addr,
+        tx_id: &str,
+        asset_in: TokenWithDenom,
+        amount_in: Uint256,
+    ) {
+        seed_pending_single_sided_with_partner_fee(
+            deps,
+            sender,
+            tx_id,
+            asset_in,
+            amount_in,
+            Uint256::zero(),
+            sender.clone(),
+        );
+    }
+
+    /// Variant of `seed_pending_single_sided` that lets partner fee fields be
+    /// set explicitly. Used by the partner-fee ack tests.
+    fn seed_pending_single_sided_with_partner_fee(
+        deps: &mut cosmwasm_std::OwnedDeps<
+            cosmwasm_std::MemoryStorage,
+            cosmwasm_std::testing::MockApi,
+            cosmwasm_std::testing::MockQuerier,
+        >,
+        sender: &Addr,
+        tx_id: &str,
+        asset_in: TokenWithDenom,
+        amount_in: Uint256,
+        partner_fee_amount: Uint256,
+        partner_fee_recipient: Addr,
+    ) {
+        PENDING_SINGLE_SIDED_LIQUIDITY
+            .save(
+                deps.as_mut().storage,
+                (sender.clone(), tx_id.to_string()),
+                &euclid::liquidity::SingleSidedLiquidityRequest {
+                    sender: sender.to_string(),
+                    tx_id: tx_id.to_string(),
+                    asset_in,
+                    amount_in,
+                    partner_fee_amount,
+                    partner_fee_recipient,
+                },
+            )
+            .unwrap();
+    }
+
+    /// Missing pending state → load fails, returns Err.
+    #[test]
+    fn test_ack_single_sided_missing_pending_returns_error() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(AddLiquidityResponse {
+            mint_lp_tokens: Uint256::from(100u128),
+            vlp_address: "vlp1".to_string(),
+            tx_id: "no_tx".to_string(),
+            sender: cross_chain_user(sender.as_str()),
+        }))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            single_sided_msg(sender.as_str(), "no_tx"),
+            ack,
+            false,
+        );
+
+        assert!(res.is_err());
+    }
+
+    /// Ok path with native asset_in:
+    /// - VLP_TO_LP_SHARES incremented by mint_lp_tokens
+    /// - pending entry removed
+    /// - response has escrow send msg + cw20 LP mint msg
+    #[test]
+    fn test_ack_single_sided_ok_native_increments_shares_and_emits_msgs() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_ss_ok";
+        let asset_in = native_token("aaa", "uaaa");
+        let amount_in = Uint256::from(1000u128);
+        seed_pending_single_sided(&mut deps, &sender, tx_id, asset_in.clone(), amount_in);
+
+        // Seed escrow for asset_in token + LP token for the vlp.
+        seed_escrow(&mut deps, "aaa", "escrow_aaa");
+        let vlp_address = "vlp_addr".to_string();
+        let lp_token_addr = Addr::unchecked("lp_token");
+        VLP_TO_LP_TOKEN
+            .save(deps.as_mut().storage, vlp_address.clone(), &lp_token_addr)
+            .unwrap();
+
+        let mint_amount = Uint256::from(250u128);
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(AddLiquidityResponse {
+            mint_lp_tokens: mint_amount,
+            vlp_address: vlp_address.clone(),
+            tx_id: tx_id.to_string(),
+            sender: cross_chain_user(sender.as_str()),
+        }))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            single_sided_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        // Pending entry removed.
+        assert!(
+            !PENDING_SINGLE_SIDED_LIQUIDITY.has(&deps.storage, (sender.clone(), tx_id.to_string()))
+        );
+
+        // VLP_TO_LP_SHARES incremented by mint_amount.
+        let shares = VLP_TO_LP_SHARES
+            .load(&deps.storage, vlp_address.clone())
+            .unwrap();
+        assert_eq!(shares, Int256::from(Uint128::from(250u128)));
+
+        // Two messages: escrow send + cw20 LP mint.
+        assert_eq!(res.messages.len(), 2);
+
+        // Attributes carry the method/sender/tx_id.
+        assert!(res
+            .attributes
+            .contains(&attr("method", "ack_single_sided_add_liquidity")));
+        assert!(res.attributes.contains(&attr("tx_id", tx_id)));
+        assert!(res.attributes.contains(&attr("sender", sender.to_string())));
+    }
+
+    /// Ok path baseline assertions: pending cleared, response has the two messages.
+    #[test]
+    fn test_ack_single_sided_ok_baseline_messages_and_state() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user2");
+        let tx_id = "tx_ss_ok_baseline";
+        let asset_in = native_token("aaa", "uaaa");
+        let amount_in = Uint256::from(800u128);
+        seed_pending_single_sided(&mut deps, &sender, tx_id, asset_in, amount_in);
+
+        seed_escrow(&mut deps, "aaa", "escrow_aaa");
+        let vlp_address = "vlp_addr_baseline".to_string();
+        VLP_TO_LP_TOKEN
+            .save(
+                deps.as_mut().storage,
+                vlp_address.clone(),
+                &Addr::unchecked("lp_token_baseline"),
+            )
+            .unwrap();
+
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(AddLiquidityResponse {
+            mint_lp_tokens: Uint256::from(42u128),
+            vlp_address: vlp_address.clone(),
+            tx_id: tx_id.to_string(),
+            sender: cross_chain_user(sender.as_str()),
+        }))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            single_sided_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        // Pending cleared.
+        assert!(
+            !PENDING_SINGLE_SIDED_LIQUIDITY.has(&deps.storage, (sender.clone(), tx_id.to_string()))
+        );
+        // Two messages emitted (escrow send + LP mint).
+        assert_eq!(res.messages.len(), 2);
+    }
+
+    /// Error ack with is_native=true → propagates Err with the relayed message.
+    #[test]
+    fn test_ack_single_sided_error_is_native_returns_err() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_ss_native_err";
+        seed_pending_single_sided(
+            &mut deps,
+            &sender,
+            tx_id,
+            native_token("aaa", "uaaa"),
+            Uint256::from(1000u128),
+        );
+
+        let ack = to_json_binary(&AcknowledgementMsg::<AddLiquidityResponse>::Error(
+            "hub_fail".to_string(),
+        ))
+        .unwrap();
+
+        let err = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            single_sided_msg(sender.as_str(), tx_id),
+            ack,
+            true,
+        )
+        .unwrap_err();
+
+        assert_eq!(err, ContractError::new("hub_fail"));
+    }
+
+    /// Error ack with is_native=false → returns Ok, pending cleared,
+    /// response contains a refund transfer msg back to sender.
+    #[test]
+    fn test_ack_single_sided_error_not_native_returns_ok_with_refund() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user1");
+        let tx_id = "tx_ss_refund";
+        seed_pending_single_sided(
+            &mut deps,
+            &sender,
+            tx_id,
+            native_token("aaa", "uaaa"),
+            Uint256::from(1000u128),
+        );
+
+        let ack = to_json_binary(&AcknowledgementMsg::<AddLiquidityResponse>::Error(
+            "fail".to_string(),
+        ))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            single_sided_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        // Pending cleared.
+        assert!(
+            !PENDING_SINGLE_SIDED_LIQUIDITY.has(&deps.storage, (sender.clone(), tx_id.to_string()))
+        );
+
+        // Attributes describe the refund.
+        assert!(res
+            .attributes
+            .contains(&attr("method", "single_sided_add_liquidity_err_refund")));
+        assert!(res.attributes.contains(&attr("tx_id", tx_id)));
+        assert!(res.attributes.contains(&attr("error", "fail")));
+
+        // Exactly one refund transfer message back to the sender.
+        assert_eq!(res.messages.len(), 1);
+    }
+
+    /// Ok path with non-zero partner fee:
+    /// - Three messages: escrow send + partner transfer + LP mint.
+    /// - The partner transfer is a BankMsg::Send for the fee amount to the recipient.
+    /// - Pending entry cleared.
+    #[test]
+    fn test_ack_single_sided_ok_with_partner_fee_emits_partner_transfer() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user_partner_ok");
+        let partner_recipient = deps.api.addr_make("partner_recipient");
+        let tx_id = "tx_ss_partner_ok";
+        let asset_in = native_token("aaa", "uaaa");
+        // Post-fee amount_in = 997, partner_fee_amount = 3
+        seed_pending_single_sided_with_partner_fee(
+            &mut deps,
+            &sender,
+            tx_id,
+            asset_in.clone(),
+            Uint256::from(997u128),
+            Uint256::from(3u128),
+            partner_recipient.clone(),
+        );
+
+        seed_escrow(&mut deps, "aaa", "escrow_aaa");
+        let vlp_address = "vlp_partner_ok".to_string();
+        VLP_TO_LP_TOKEN
+            .save(
+                deps.as_mut().storage,
+                vlp_address.clone(),
+                &Addr::unchecked("lp_token_partner_ok"),
+            )
+            .unwrap();
+
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(AddLiquidityResponse {
+            mint_lp_tokens: Uint256::from(100u128),
+            vlp_address: vlp_address.clone(),
+            tx_id: tx_id.to_string(),
+            sender: cross_chain_user(sender.as_str()),
+        }))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            single_sided_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        // Pending entry removed.
+        assert!(
+            !PENDING_SINGLE_SIDED_LIQUIDITY.has(&deps.storage, (sender.clone(), tx_id.to_string()))
+        );
+
+        // Three messages now: escrow send + partner transfer + LP mint.
+        assert_eq!(res.messages.len(), 3);
+
+        // Find and validate the partner transfer message (a BankMsg::Send for "uaaa" amount 3 to partner_recipient).
+        let partner_send_found = res.messages.iter().any(|sm| match &sm.msg {
+            cosmwasm_std::CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { to_address, amount }) => {
+                to_address == partner_recipient.as_str()
+                    && amount.len() == 1
+                    && amount[0].denom == "uaaa"
+                    && amount[0].amount == Uint128::from(3u128)
+            }
+            _ => false,
+        });
+        assert!(
+            partner_send_found,
+            "expected BankMsg::Send to partner_recipient for 3 uaaa"
+        );
+
+        // Attributes carry the partner_fee_amount and recipient.
+        assert!(res.attributes.contains(&attr("partner_fee_amount", "3")));
+        assert!(res.attributes.contains(&attr(
+            "partner_fee_recipient",
+            partner_recipient.to_string()
+        )));
+
+        // FEE_STATE tracks the collected partner fee so `get_partner_fees_collected` sees it.
+        let fee_state = FEE_STATE.load(&deps.storage).unwrap();
+        assert_eq!(
+            fee_state.partner_fees_collected.get_fee("aaa"),
+            Uint256::from(3u128),
+        );
+    }
+
+    /// Error ack on a non-native chain with a non-zero partner fee:
+    /// - Refund amount = amount_in + partner_fee_amount (the original deposit total).
+    /// - Single refund transfer message (BankMsg::Send) to the sender for that full amount.
+    #[test]
+    fn test_ack_single_sided_error_refund_includes_partner_fee() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user_partner_err");
+        let partner_recipient = deps.api.addr_make("partner_recipient_err");
+        let tx_id = "tx_ss_partner_err";
+        seed_pending_single_sided_with_partner_fee(
+            &mut deps,
+            &sender,
+            tx_id,
+            native_token("aaa", "uaaa"),
+            Uint256::from(997u128),
+            Uint256::from(3u128),
+            partner_recipient,
+        );
+
+        let ack = to_json_binary(&AcknowledgementMsg::<AddLiquidityResponse>::Error(
+            "fail_partner".to_string(),
+        ))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            single_sided_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        // Pending cleared.
+        assert!(
+            !PENDING_SINGLE_SIDED_LIQUIDITY.has(&deps.storage, (sender.clone(), tx_id.to_string()))
+        );
+
+        // refund_amount attribute reflects amount_in + partner_fee_amount = 1000.
+        assert!(res.attributes.contains(&attr("refund_amount", "1000")));
+        assert!(res
+            .attributes
+            .contains(&attr("method", "single_sided_add_liquidity_err_refund")));
+
+        // Single refund transfer message: 1000 uaaa back to the sender.
+        assert_eq!(res.messages.len(), 1);
+        match &res.messages[0].msg {
+            cosmwasm_std::CosmosMsg::Bank(cosmwasm_std::BankMsg::Send { to_address, amount }) => {
+                assert_eq!(to_address, sender.as_str());
+                assert_eq!(amount.len(), 1);
+                assert_eq!(amount[0].denom, "uaaa");
+                assert_eq!(amount[0].amount, Uint128::from(1000u128));
+            }
+            other => panic!("expected BankMsg::Send refund, got {other:?}"),
+        }
+    }
+
+    /// Smart (CW20) asset_in on the success path: escrow message must be a
+    /// cw20-base Send to the escrow contract carrying the `EscrowCw20HookMsg::Deposit`
+    /// hook, and the LP mint message must follow.
+    #[test]
+    fn test_ack_single_sided_ok_smart_escrows_via_cw20_send() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user_smart_ok");
+        let tx_id = "tx_ss_smart_ok";
+        let cw20_addr = deps.api.addr_make("cw20").to_string();
+        let asset_in = smart_token("aaa", &cw20_addr);
+        let amount_in = Uint256::from(1000u128);
+        seed_pending_single_sided(&mut deps, &sender, tx_id, asset_in, amount_in);
+
+        seed_escrow(&mut deps, "aaa", "escrow_aaa");
+        let vlp_address = "vlp_smart_ok".to_string();
+        VLP_TO_LP_TOKEN
+            .save(
+                deps.as_mut().storage,
+                vlp_address.clone(),
+                &Addr::unchecked("lp_token_smart_ok"),
+            )
+            .unwrap();
+
+        let ack = to_json_binary(&AcknowledgementMsg::Ok(AddLiquidityResponse {
+            mint_lp_tokens: Uint256::from(100u128),
+            vlp_address: vlp_address.clone(),
+            tx_id: tx_id.to_string(),
+            sender: cross_chain_user(sender.as_str()),
+        }))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            single_sided_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        // Two messages: cw20 Send (escrow) + LP mint.
+        assert_eq!(res.messages.len(), 2);
+
+        // Find the cw20 Send to the cw20 contract carrying the escrow Deposit hook.
+        let escrow_send_found = res.messages.iter().any(|sm| {
+            if let cosmwasm_std::CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+                contract_addr,
+                msg,
+                funds,
+            }) = &sm.msg
+            {
+                if contract_addr != &cw20_addr || !funds.is_empty() {
+                    return false;
+                }
+                if let Ok(cw20_base::msg::ExecuteMsg::Send {
+                    contract,
+                    amount,
+                    msg: hook_msg,
+                }) = cosmwasm_std::from_json::<cw20_base::msg::ExecuteMsg>(msg.as_slice())
+                {
+                    let hook: Result<euclid::msgs::escrow::cw20::EscrowCw20HookMsg, _> =
+                        cosmwasm_std::from_json(hook_msg.as_slice());
+                    return contract == "escrow_aaa"
+                        && amount == Uint128::from(1000u128)
+                        && matches!(
+                            hook,
+                            Ok(euclid::msgs::escrow::cw20::EscrowCw20HookMsg::Deposit {})
+                        );
+                }
+                false
+            } else {
+                false
+            }
+        });
+        assert!(
+            escrow_send_found,
+            "expected cw20 Send to cw20_addr with escrow Deposit hook"
+        );
+    }
+
+    /// Smart (CW20) asset_in on the failure path: refund must be a cw20-base
+    /// Transfer back to the user for amount_in + partner_fee_amount.
+    #[test]
+    fn test_ack_single_sided_error_smart_refunds_via_cw20_transfer() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("user_smart_err");
+        let partner_recipient = deps.api.addr_make("partner_smart_err");
+        let tx_id = "tx_ss_smart_err";
+        let cw20_addr = deps.api.addr_make("cw20").to_string();
+        // Post-fee amount_in = 997, partner_fee_amount = 3 → refund 1000.
+        seed_pending_single_sided_with_partner_fee(
+            &mut deps,
+            &sender,
+            tx_id,
+            smart_token("aaa", &cw20_addr),
+            Uint256::from(997u128),
+            Uint256::from(3u128),
+            partner_recipient,
+        );
+
+        let ack = to_json_binary(&AcknowledgementMsg::<AddLiquidityResponse>::Error(
+            "smart_fail".to_string(),
+        ))
+        .unwrap();
+
+        let res = reusable_internal_ack_call(
+            &mut deps.as_mut(),
+            mock_env(),
+            single_sided_msg(sender.as_str(), tx_id),
+            ack,
+            false,
+        )
+        .unwrap();
+
+        // refund_amount attribute reflects the full 1000.
+        assert!(res.attributes.contains(&attr("refund_amount", "1000")));
+
+        // Single cw20 Transfer message back to the sender for 1000.
+        assert_eq!(res.messages.len(), 1);
+        match &res.messages[0].msg {
+            cosmwasm_std::CosmosMsg::Wasm(cosmwasm_std::WasmMsg::Execute {
+                contract_addr,
+                msg,
+                funds,
+            }) => {
+                assert_eq!(contract_addr, &cw20_addr);
+                assert!(funds.is_empty());
+                match cosmwasm_std::from_json::<cw20_base::msg::ExecuteMsg>(msg.as_slice()).unwrap()
+                {
+                    cw20_base::msg::ExecuteMsg::Transfer { recipient, amount } => {
+                        assert_eq!(recipient, sender.to_string());
+                        assert_eq!(amount, Uint128::from(1000u128));
+                    }
+                    other => panic!("expected cw20 Transfer, got {other:?}"),
+                }
+            }
+            other => panic!("expected WasmMsg::Execute refund, got {other:?}"),
         }
     }
 }

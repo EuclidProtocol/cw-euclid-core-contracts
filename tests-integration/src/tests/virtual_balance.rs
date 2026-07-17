@@ -34,6 +34,7 @@ fn test_proper_instantiation() {
         owner.clone(),
         vlp_code_id,
         0,
+        0,
         virtual_balance_code_id,
         Addr::unchecked("relayer_contract"),
         Addr::unchecked("release_fee_recipient"),

@@ -3,15 +3,20 @@ use crate::{
     chain::ChainUid,
     cross_chain_user::CrossChainUser,
     fee::{DenomFees, PartnerFee},
-    liquidity::{AddLiquidityRequest, RemoveLiquidityRequest},
-    msgs::{cross_chain_config::CrossChainConfig, hook::EuclidReceive, vlp::base::PoolConfig},
+    liquidity::{
+        AddLiquidityRequest, ConcentratedAddLiquidityResponse, ConcentratedCollectFeesResponse,
+        ConcentratedCollectProtocolFeesResponse, ConcentratedRemoveLiquidityResponse,
+        RemoveLiquidityRequest, SingleSidedLiquidityRequest,
+    },
+    msgs::vlp::base::{PoolConfig, PoolKey},
+    msgs::{cross_chain_config::CrossChainConfig, hook::EuclidReceive},
     recipient::Recipient,
     swap::{NextSwapPair, SwapRequest},
     token::{Pair, PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
     utils::pagination::Pagination,
 };
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint128, Uint256};
 use cw20::Cw20ReceiveMsg;
 #[cw_serde]
 pub struct InstantiateMsg {
@@ -20,15 +25,18 @@ pub struct InstantiateMsg {
     pub chain_uid: ChainUid,
     pub escrow_code_id: u64,
     pub lp_code_id: u64,
+    pub position_token_code_id: u64,
     pub is_native: bool,
     pub relayer_contract: Addr,
     pub rate_limit_fee_recipient: Addr,
     pub rate_limit_fee_denom: String,
-    pub rate_limit_free_limit: Uint128,
+    pub rate_limit_free_limit: Uint256,
 }
 
 #[cw_serde]
 #[cfg_attr(not(target_arch = "wasm32"), derive(cw_orch::ExecuteFns))]
+#[cfg_attr(feature = "cross-vm", derive(cross_vm_macros::CwExecuteFns))]
+#[cfg_attr(feature = "cross-vm", cross_vm(trait_name = "FactoryExecuteFns"))]
 pub enum ExecuteMsg {
     ManageFactoryState(ManageFactoryState),
     RegisterDenom {
@@ -40,15 +48,16 @@ pub enum ExecuteMsg {
         cross_chain_config: CrossChainConfig,
     },
     #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
+    #[cfg_attr(feature = "cross-vm", payable)]
     DepositToken {
         asset_in: TokenWithDenom,
-        amount_in: Uint128,
+        amount_in: Uint256,
         recipients: Vec<Recipient>,
         cross_chain_config: CrossChainConfig,
     },
     TransferVoucher {
         token_id: Token,
-        amount: Uint128,
+        amount: Uint256,
         // If user has approval for transfer, they can set the address to transfer from (Behaves like cw20 allowance)
         from: Option<CrossChainUser>,
         recipients: Vec<Recipient>,
@@ -60,9 +69,18 @@ pub enum ExecuteMsg {
         pool_config: PoolConfig,
         lp_token_name: String,
         lp_token_symbol: String,
-        lp_token_decimal: u8,
         slippage_tolerance_bps: u64,
         lp_token_marketing: Option<cw20_base::msg::InstantiateMarketingInfo>,
+        cross_chain_config: CrossChainConfig,
+    },
+    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
+    RequestConcentratedPoolCreation {
+        pair_with_denom_and_amount: PairWithDenomAndAmount,
+        fee_tier_bps: u64,
+        tick_spacing: u64,
+        slippage_tolerance_bps: u64,
+        /// Initial tick for the pool price. If `None`, defaults to tick 0 (1:1 price).
+        initial_tick: Option<i64>,
         cross_chain_config: CrossChainConfig,
     },
     AddLiquidity {
@@ -70,7 +88,48 @@ pub enum ExecuteMsg {
         slippage_tolerance_bps: u64,
         cross_chain_config: CrossChainConfig,
     },
+    AddConcentratedLiquidity {
+        pair_with_denom_and_amount: PairWithDenomAndAmount,
+        pool_key: PoolKey,
+        lower_tick_index: i64,
+        upper_tick_index: i64,
+        position_id: Option<Uint128>,
+        slippage_tolerance_bps: u64,
+        cross_chain_config: CrossChainConfig,
+    },
+    RemoveConcentratedLiquidity {
+        pool_key: PoolKey,
+        position_id: Uint128,
+        liquidity_delta: Uint128,
+        recipient: CrossChainUser,
+        cross_chain_config: CrossChainConfig,
+    },
+    CollectConcentratedFees {
+        pool_key: PoolKey,
+        position_id: Uint128,
+        recipient: CrossChainUser,
+        cross_chain_config: CrossChainConfig,
+    },
+    CollectConcentratedProtocolFees {
+        pool_key: PoolKey,
+        recipient: CrossChainUser,
+        amount_0_requested: Uint128,
+        amount_1_requested: Uint128,
+        cross_chain_config: CrossChainConfig,
+    },
     #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
+    AddSingleSidedLiquidity {
+        asset_in: TokenWithDenom,
+        amount_in: Uint256,
+        pair: Pair,
+        swap_amount: Uint256,
+        swap_route: Vec<NextSwapPair>,
+        min_lp_out: Uint256,
+        partner_fee: Option<PartnerFee>,
+        cross_chain_config: CrossChainConfig,
+    },
+    #[cfg_attr(not(target_arch = "wasm32"), cw_orch(payable))]
+    #[cfg_attr(feature = "cross-vm", payable)]
     ExecuteSwapRequest(ExecuteSwapRequest),
 
     // Recieve CW20 TOKENS structure
@@ -89,24 +148,90 @@ pub enum ExecuteMsg {
         sender: Addr,
     },
 
+    /// Admin entry to bootstrap the pool_factory link on a fresh chain.
+    /// One-shot: rejects if `POOL_FACTORY_INITIALISED` is already true.
+    SetPoolFactory {
+        pool_factory_address: String,
+    },
+
+    /// Proxy entry used by `pool_factory` to mint LP tokens after a
+    /// successful add-liquidity ack. Auth: only callable by the configured
+    /// pool factory address.
+    ProxyMintLpToken {
+        lp_token: Addr,
+        recipient: String,
+        amount: Uint256,
+    },
+
+    /// Proxy entry used by `pool_factory` to release tokens from escrow back
+    /// to a recipient — used by add-liquidity failure refunds and other
+    /// future pool flows. Auth: only callable by the configured pool factory
+    /// address.
+    ProxyReleaseEscrow {
+        token: Token,
+        denom: TokenType,
+        recipient: String,
+        amount: Uint256,
+    },
+
+    /// Proxy entry used by `pool_factory` to burn LP cw20 tokens held by main
+    /// factory after a successful remove-liquidity ack. Main factory holds the
+    /// LP tokens (they arrived via the `cw20::Send` hook) and remains the only
+    /// authority capable of burning them. Auth: only callable by the
+    /// configured pool factory address.
+    ProxyBurnLpToken {
+        lp_token: Addr,
+        amount: Uint256,
+    },
+
+    /// Proxy entry used by `pool_factory` to return LP cw20 tokens held by
+    /// main factory back to the original sender after a failed
+    /// remove-liquidity ack. Auth: only callable by the configured pool
+    /// factory address.
+    ProxyTransferLpToken {
+        lp_token: Addr,
+        recipient: String,
+        amount: Uint256,
+    },
+
+    /// Proxy entry used by `pool_factory` to mint a concentrated-liquidity
+    /// position NFT into the singleton position-token contract held by main
+    /// factory. Slice 4 adds the auth boundary up-front; the wire-up from the
+    /// pool_factory side lands in Slice 5 (CLP add_concentrated_liquidity).
+    /// Auth: only callable by the configured pool factory address.
+    ProxyMintPosition {
+        token_id: Uint128,
+        owner: Addr,
+        vlp_address: String,
+        liquidity: Uint128,
+    },
+
     ReceivePacket {
         source_port: String,
         destination_port: String,
-        msg: Binary,
+        /// Transport representation of the wire bytes
+        /// (raw JSON text when encoding is 0, 0x lowercase hex when 1).
+        msg: String,
         sequence: u128,
         timeout: u64,
+        encoding: u8,
     },
 
     ReceivePacketInternalCallback {
         msg: Binary,
         timeout: u64,
     },
+    /// Carries no encoding field: the handler loads the pending packet by
+    /// sequence first and resolves the representation from the stored
+    /// `PendingPacket.encoding` (parse after load).
     AcknowledgePacket {
         source_port: String,
         destination_port: String,
-        msg: Binary,
+        /// Original wire bytes, same representation rule as `ReceivePacket.msg`.
+        msg: String,
         sequence: u128,
-        ack: Binary,
+        /// Ack wire bytes, same representation rule.
+        ack: String,
     },
 }
 
@@ -125,14 +250,24 @@ pub enum ManageFactoryState {
     UpdateRelayerAddress {
         relayer_address: String,
     },
+    UpdatePositionTokenCodeId {
+        position_token_code_id: u64,
+    },
+    RegisterPositionToken {},
+    /// Clears the `REGISTERED` flag so the router can register this factory again.
+    /// Recovery path for a registration that never settled on the router (e.g. a
+    /// lost success ack): the factory marks itself registered on receive, so without
+    /// this a stuck factory would reject every retry. Auth: migration_admin, as a
+    /// break-glass recovery action.
+    ResetRegistration {},
 }
 
 #[cw_serde]
 pub struct ExecuteSwapRequest {
     pub asset_in: TokenWithDenom,
-    pub amount_in: Uint128,
+    pub amount_in: Uint256,
     pub asset_out: Token,
-    pub min_amount_out: Uint128,
+    pub min_amount_out: Uint256,
     pub swaps: Vec<NextSwapPair>,
     pub recipients: Vec<Recipient>,
     pub partner_fee: Option<PartnerFee>,
@@ -141,9 +276,14 @@ pub struct ExecuteSwapRequest {
 
 #[cw_serde]
 #[derive(cw_orch::QueryFns, QueryResponses)]
+#[cfg_attr(feature = "cross-vm", derive(cross_vm_macros::CwQueryFns))]
+#[cfg_attr(feature = "cross-vm", cross_vm(trait_name = "FactoryQueryFns"))]
 pub enum QueryMsg {
     #[returns(GetVlpResponse)]
     GetVlp { pair: Pair },
+
+    #[returns(GetConcentratedVlpResponse)]
+    GetConcentratedVlp { pool_key: PoolKey },
 
     #[returns(GetLPTokenResponse)]
     GetLPToken { vlp: String },
@@ -158,6 +298,10 @@ pub enum QueryMsg {
     #[returns(AllPoolsResponse)]
     GetAllPools {},
 
+    // Query to get all concentrated pools in the factory
+    #[returns(AllConcentratedPoolsResponse)]
+    GetAllConcentratedPools {},
+
     // Query to get all pools in the factory
     #[returns(AllTokensResponse)]
     GetAllTokens {},
@@ -166,26 +310,72 @@ pub enum QueryMsg {
     #[returns(GetPendingSwapsResponse)]
     PendingSwapsUser {
         user: Addr,
-        pagination: Pagination<Uint128>,
+        pagination: Pagination<Uint256>,
     },
     #[returns(GetPendingLiquidityResponse)]
     PendingLiquidity {
         user: Addr,
-        pagination: Pagination<Uint128>,
+        pagination: Pagination<Uint256>,
     },
     #[returns(GetPendingRemoveLiquidityResponse)]
     PendingRemoveLiquidity {
         user: Addr,
-        pagination: Pagination<Uint128>,
+        pagination: Pagination<Uint256>,
+    },
+    #[returns(GetPendingSingleSidedLiquidityResponse)]
+    PendingSingleSidedLiquidity {
+        user: Addr,
+        pagination: Pagination<Uint256>,
     },
 
     #[returns(GetEscrowResponse)]
     GetEscrow { token_id: String },
+
+    #[returns(GetPositionTokenContractResponse)]
+    GetPositionTokenContract {},
+
+    #[returns(GetRateLimitStateResponse)]
+    GetRateLimitState {},
+
+    #[returns(GetUserRateLimitResponse)]
+    GetUserRateLimit { user: Addr },
+
+    /// Returns whether `addr` holds the requested admin role. Used by
+    /// pool_factory for admin-gated actions.
+    #[returns(QueryAdminRoleResponse)]
+    QueryAdminRole {
+        addr: Addr,
+        role: crate::admin::AdminType,
+    },
+
+    /// Returns the configured pool_factory address (if any).
+    #[returns(QueryPoolFactoryAddressResponse)]
+    QueryPoolFactoryAddress {},
+
+    #[returns(crate::build_info::BuildInfoResponse)]
+    GetBuildInfo {},
+}
+
+#[cw_serde]
+pub struct QueryAdminRoleResponse {
+    pub has_role: bool,
+}
+
+#[cw_serde]
+pub struct QueryPoolFactoryAddressResponse {
+    pub pool_factory_address: Option<Addr>,
+    pub initialised: bool,
 }
 
 #[cw_serde]
 pub struct GetVlpResponse {
     pub vlp_address: String,
+}
+
+#[cw_serde]
+pub struct GetConcentratedVlpResponse {
+    pub vlp_address: String,
+    pub pool_key: PoolKey,
 }
 
 #[cw_serde]
@@ -197,6 +387,11 @@ pub struct GetLPTokenResponse {
 pub struct GetEscrowResponse {
     pub escrow_address: Option<Addr>,
     pub denoms: Vec<TokenType>,
+}
+
+#[cw_serde]
+pub struct GetPositionTokenContractResponse {
+    pub position_token_contract: Option<Addr>,
 }
 // We define a custom struct for each query response
 #[cw_serde]
@@ -219,7 +414,7 @@ pub struct PartnerFeesCollectedResponse {
 
 #[cw_serde]
 pub struct PartnerFeesCollectedPerDenomResponse {
-    pub total: Uint128,
+    pub total: Uint256,
 }
 
 #[cw_serde]
@@ -233,8 +428,20 @@ pub struct PoolVlpResponse {
 }
 
 #[cw_serde]
+pub struct AllConcentratedPoolsResponse {
+    pub pools: Vec<ConcentratedPoolVlpResponse>,
+}
+
+#[cw_serde]
+pub struct ConcentratedPoolVlpResponse {
+    pub pool_key: PoolKey,
+    pub vlp: String,
+}
+
+#[cw_serde]
 pub struct MigrateMsg {
     pub mock_relayer_address: Option<String>,
+    pub position_token_code_id: Option<u64>,
 }
 
 #[cw_serde]
@@ -245,15 +452,15 @@ pub struct RegisterFactoryResponse {
 #[cw_serde]
 pub struct ReleaseEscrowDenomsResponse {
     pub token_type: TokenType,
-    pub amount: Uint128,
-    pub new_balance: Uint128,
+    pub amount: Uint256,
+    pub new_balance: Uint256,
 }
 
 #[cw_serde]
 pub struct ReleaseEscrowResponse {
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub to_address: String,
-    pub escrow_balance: Uint128,
+    pub escrow_balance: Uint256,
 }
 
 #[cw_serde]
@@ -271,6 +478,66 @@ pub struct GetPendingRemoveLiquidityResponse {
 }
 
 #[cw_serde]
+pub struct RequestConcentratedPoolCreationResponse {
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub vlp_address: String,
+    pub pool_key: PoolKey,
+}
+
+#[cw_serde]
+pub struct AddConcentratedLiquidityMsgResponse {
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub response: ConcentratedAddLiquidityResponse,
+}
+
+#[cw_serde]
+pub struct RemoveConcentratedLiquidityMsgResponse {
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub response: ConcentratedRemoveLiquidityResponse,
+}
+
+#[cw_serde]
+pub struct CollectConcentratedFeesMsgResponse {
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub response: ConcentratedCollectFeesResponse,
+}
+
+#[cw_serde]
+pub struct CollectConcentratedProtocolFeesMsgResponse {
+    pub tx_id: String,
+    pub sender: CrossChainUser,
+    pub response: ConcentratedCollectProtocolFeesResponse,
+}
+
+#[cw_serde]
+pub struct GetPendingSingleSidedLiquidityResponse {
+    pub pending_single_sided_liquidity: Vec<SingleSidedLiquidityRequest>,
+}
+
+#[cw_serde]
 pub struct AllTokensResponse {
     pub tokens: Vec<Token>, // Assuming pool addresses are strings
+}
+
+#[cw_serde]
+pub struct FeeBracket {
+    pub threshold: u128,
+    pub fee: Uint256,
+}
+
+#[cw_serde]
+pub struct GetRateLimitStateResponse {
+    pub free_limit: u128,
+    pub fee_brackets: Vec<FeeBracket>,
+}
+
+#[cw_serde]
+pub struct GetUserRateLimitResponse {
+    pub user: Addr,
+    pub free_limit: Option<u128>,
+    pub pending_packets: u128,
 }

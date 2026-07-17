@@ -1,7 +1,8 @@
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint256};
 
 use crate::{
+    msgs::vlp::base::PoolKey,
     recipient::Recipient,
     token::{Token, TokenWithDenom},
 };
@@ -15,17 +16,17 @@ pub struct SwapRequest {
     // The asset being swapped
     pub asset_in: TokenWithDenom,
     // The amount of asset_in being swapped
-    pub amount_in: Uint128,
+    pub amount_in: Uint256,
     // The asset being received
     pub asset_out: Token,
     // The min amount of asset being received
-    pub min_amount_out: Uint128,
+    pub min_amount_out: Uint256,
     // All the swaps needed for assent_in <> asset_out
     pub swaps: Vec<NextSwapPair>,
 
     pub recipients: Vec<Recipient>,
 
-    pub partner_fee_amount: Uint128,
+    pub partner_fee_amount: Uint256,
     pub partner_fee_recipient: Addr,
 }
 
@@ -39,12 +40,14 @@ pub struct NextSwapVlp {
 pub struct NextSwapPair {
     pub token_in: Token,
     pub token_out: Token,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pool_key: Option<PoolKey>,
     pub test_fail: Option<bool>,
 }
 
 #[cw_serde]
 pub struct SwapResponse {
-    pub amount_out: Uint128,
+    pub amount_out: Uint256,
     pub tx_id: String,
 }
 

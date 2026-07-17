@@ -19,12 +19,14 @@ use crate::execute::token::{execute_transfer_voucher, execute_withdraw_voucher};
 use crate::execute::{execute_manage_router_state, execute_meta_receive, execute_register_factory};
 
 use crate::query::{
-    self, query_all_chains, query_all_escrows, query_all_tokens, query_all_vlps, query_chain,
-    query_relayer_addresses, query_release_fees, query_state, query_token_denoms,
-    query_token_escrows, query_vlp,
+    self, query_all_chains, query_all_vlps, query_chain, query_chain_timeout,
+    query_clp_position_info, query_default_release_fee, query_euclid_fee_override, query_fee_state,
+    query_locked_chains, query_relayer_addresses, query_release_fees, query_state, query_vlp,
+    query_vlp_by_pool_key,
 };
 use crate::reply::{
-    self, ADD_LIQUIDITY_REPLY_ID, CROSS_CHAIN_RECEIVE_REPLY_ID, REMOVE_LIQUIDITY_REPLY_ID,
+    self, ADD_LIQUIDITY_REPLY_ID, COLLECT_CONCENTRATED_REPLY_ID, CROSS_CHAIN_RECEIVE_REPLY_ID,
+    REMOVE_LIQUIDITY_REPLY_ID, SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID, SINGLE_SIDED_SWAP_REPLY_ID,
     SWAP_REPLY_ID, VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID, VLP_INSTANTIATE_REPLY_ID,
     VLP_POOL_REGISTER_REPLY_ID,
 };
@@ -45,14 +47,17 @@ pub fn instantiate(
     let state = State {
         constant_product_vlp_code_id: msg.constant_product_vlp_code_id,
         stable_vlp_code_id: msg.stable_vlp_code_id,
+        concentrated_vlp_code_id: msg.concentrated_vlp_code_id,
         locked: false,
     };
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    euclid::build_info::set_build_info(deps.storage)?;
 
     RELAYER_CONTRACT.save(deps.storage, &msg.relayer_contract)?;
     LOCKED_CHAINS.save(deps.storage, &vec![])?;
 
     STATE.save(deps.storage, &state)?;
+    ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender.clone()))?;
     ADMIN.save(deps.storage, &EuclidAdmin::default(info.sender.clone()))?;
     FEE_STATE.save(
         deps.storage,
@@ -106,6 +111,7 @@ pub fn execute(
                 ExecuteMsg::ManageRouterState(msg) => {
                     execute_manage_router_state(deps, env, info, msg)
                 }
+
                 ExecuteMsg::RegisterFactory {
                     chain_uid,
                     chain_info,
@@ -116,6 +122,7 @@ pub fn execute(
                     recipient,
                     cross_chain_config,
                 } => {
+                    cw_utils::nonpayable(&info)?;
                     let verified_sender =
                         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
                     execute_withdraw_voucher(
@@ -133,6 +140,7 @@ pub fn execute(
                     amount,
                     recipient,
                 } => {
+                    cw_utils::nonpayable(&info)?;
                     let verified_sender =
                         CrossChainUser::new(ChainUid::vsl_chain_uid()?, info.sender.to_string());
                     execute_transfer_voucher(
@@ -162,6 +170,7 @@ pub fn execute(
                     msg,
                     sequence,
                     timeout,
+                    encoding,
                 } => execute_receive_packet(
                     deps,
                     info,
@@ -171,6 +180,7 @@ pub fn execute(
                     source_port,
                     destination_port,
                     timeout,
+                    encoding,
                 ),
                 ExecuteMsg::ReceivePacketInternalCallback {
                     msg,
@@ -209,16 +219,23 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetChain { chain_uid } => query_chain(deps, chain_uid),
         QueryMsg::GetAllChains {} => query_all_chains(deps),
         QueryMsg::GetVlp { pair } => query_vlp(deps, pair),
+        QueryMsg::GetVlpByPoolKey { pool_key } => query_vlp_by_pool_key(deps, pool_key),
         QueryMsg::GetAllVlps { pagination } => query_all_vlps(deps, pagination),
         QueryMsg::SimulateSwap(msg) => query::query_simulate_swap(deps, msg),
-        QueryMsg::QueryTokenEscrows { token, pagination } => {
-            query_token_escrows(deps, token, pagination)
-        }
-        QueryMsg::QueryAllEscrows { pagination } => query_all_escrows(deps, pagination),
-        QueryMsg::QueryAllTokens { pagination } => query_all_tokens(deps, pagination),
-        QueryMsg::QueryTokenDenoms { token } => query_token_denoms(deps, token),
         QueryMsg::QueryRelayerAddresses {} => query_relayer_addresses(deps),
         QueryMsg::GetReleaseFees { pagination } => query_release_fees(deps, pagination),
+        QueryMsg::GetClpPositionInfo { position_id } => query_clp_position_info(deps, position_id),
+        #[allow(deprecated)]
+        QueryMsg::GetAllEscrows {} => query::query_all_escrows(deps),
+        QueryMsg::GetLockedChains {} => query_locked_chains(deps),
+        QueryMsg::GetFeeState {} => query_fee_state(deps),
+        QueryMsg::GetDefaultReleaseFee {} => query_default_release_fee(deps),
+        QueryMsg::GetChainTimeout { chain_uid } => query_chain_timeout(deps, chain_uid),
+        QueryMsg::GetEuclidFeeOverride { user } => query_euclid_fee_override(deps, user),
+        QueryMsg::GetBuildInfo {} => Ok(to_json_binary(&euclid::build_info::build_info(
+            deps.storage,
+            CONTRACT_VERSION,
+        ))?),
     }
 }
 #[cfg_attr(not(feature = "library"), entry_point)]
@@ -236,15 +253,85 @@ pub fn reply(mut deps: DepsMut, env: Env, msg: Reply) -> Result<Response, Contra
         VLP_POOL_REGISTER_REPLY_ID => reply::on_pool_register_reply(deps, msg),
         ADD_LIQUIDITY_REPLY_ID => reply::on_add_liquidity_reply(deps, msg),
         REMOVE_LIQUIDITY_REPLY_ID => reply::on_remove_liquidity_reply(deps, env, msg),
+        COLLECT_CONCENTRATED_REPLY_ID => reply::on_collect_concentrated_reply(deps, msg),
         SWAP_REPLY_ID => reply::on_swap_reply(&mut deps, env, msg),
         VIRTUAL_BALANCE_INSTANTIATE_REPLY_ID => {
             reply::on_virtual_balance_instantiate_reply(deps, msg)
         }
         CROSS_CHAIN_RECEIVE_REPLY_ID => reply::on_cross_chain_receive_reply(deps, msg),
+        SINGLE_SIDED_SWAP_REPLY_ID => reply::on_single_sided_swap_reply(deps, msg),
+        SINGLE_SIDED_ADD_LIQUIDITY_REPLY_ID => {
+            reply::on_single_sided_add_liquidity_reply(deps, msg)
+        }
 
         id => Err(ContractError::Std(StdError::generic_err(format!(
             "Unknown reply id: {}",
             id
         )))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    // -----------------------------------------------------------------------
+    // Instantiate
+    // -----------------------------------------------------------------------
+
+    use cosmwasm_std::{
+        testing::{message_info, mock_dependencies},
+        Addr,
+    };
+    use euclid::admin::EuclidAdmin;
+
+    use crate::{
+        state::{FeeState, State, ADMIN, FEE_STATE, LOCKED_CHAINS, RELAYER_CONTRACT, STATE},
+        testing::helpers::{
+            init, TEST_DEFAULT_FEE_RECIPIENT, TEST_RELAYER, TEST_RELEASE_FEE_RECIPIENT,
+        },
+    };
+
+    #[test]
+    fn test_instantiate() {
+        let mut deps = mock_dependencies();
+        let creator = deps.api.addr_make("creator");
+        let info = message_info(&creator, &[]);
+        init(deps.as_mut(), info);
+        let expected_state = State {
+            constant_product_vlp_code_id: 1,
+            stable_vlp_code_id: 3,
+            concentrated_vlp_code_id: 4,
+            locked: false,
+        };
+        let state = STATE.load(deps.as_ref().storage).unwrap();
+        let admins = ADMIN.load(deps.as_ref().storage).unwrap();
+        assert_eq!(expected_state, state);
+        assert_eq!(admins, EuclidAdmin::default(creator));
+    }
+
+    #[test]
+    fn test_instantiate_state_fields() {
+        let mut deps = mock_dependencies();
+        let creator = deps.api.addr_make("creator");
+        let info = message_info(&creator, &[]);
+        let res = init(deps.as_mut(), info.clone());
+
+        assert_eq!(res.attributes[0].key, "method");
+        assert_eq!(res.attributes[0].value, "instantiate");
+        assert_eq!(res.messages.len(), 1);
+
+        let relayer = RELAYER_CONTRACT.load(deps.as_ref().storage).unwrap();
+        assert_eq!(relayer, Addr::unchecked(TEST_RELAYER));
+
+        let fee_state = FEE_STATE.load(deps.as_ref().storage).unwrap();
+        assert_eq!(
+            fee_state,
+            FeeState {
+                release_fee_recipient: Addr::unchecked(TEST_RELEASE_FEE_RECIPIENT),
+                default_fee_recipient: Addr::unchecked(TEST_DEFAULT_FEE_RECIPIENT),
+            }
+        );
+
+        let locked_chains = LOCKED_CHAINS.load(deps.as_ref().storage).unwrap();
+        assert!(locked_chains.is_empty());
     }
 }

@@ -1,3 +1,22 @@
+pub mod concentrated;
+pub mod shared;
+
+use cosmwasm_std::Uint128;
+use euclid::msgs::vlp::concentrated::msg::{
+    PositionResponse, ProtocolFeesResponse, Slot0Response, TickResponse,
+};
+
+/// Snapshot of pool state at a point in time, used for invariant checking
+#[derive(Debug, Clone)]
+pub struct PoolSnapshot {
+    pub slot0: Slot0Response,
+    pub positions: Vec<PositionResponse>,
+    pub ticks: Vec<TickResponse>,
+    pub protocol_fees: ProtocolFeesResponse,
+    pub reserve_0: Uint128,
+    pub reserve_1: Uint128,
+}
+
 /// Result of a single invariant check
 #[derive(Debug, Clone)]
 pub struct InvariantCheck {

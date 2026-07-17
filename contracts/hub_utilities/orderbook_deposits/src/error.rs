@@ -54,6 +54,9 @@ pub enum ContractError {
     #[error("permit already used")]
     PermitAlreadyUsed {},
 
+    #[error("withdrawal already consumed")]
+    WithdrawalAlreadyConsumed {},
+
     #[error("insufficient withdrawable balance")]
     InsufficientWithdrawableBalance {},
 
@@ -64,4 +67,10 @@ pub enum ContractError {
     InvalidDestination {},
     // Add any other custom errors you like here.
     // Look at https://docs.rs/thiserror/1.0.21/thiserror/ for details.
+}
+
+impl From<cw_utils::PaymentError> for ContractError {
+    fn from(err: cw_utils::PaymentError) -> Self {
+        ContractError::Std(cosmwasm_std::StdError::generic_err(err.to_string()))
+    }
 }

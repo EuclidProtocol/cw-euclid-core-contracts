@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    attr, ensure, from_json, to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, MessageInfo,
-    Response, StdError, Timestamp, Uint128, WasmMsg,
+    attr, ensure, from_json, to_json_binary, Binary, CosmosMsg, Deps, DepsMut, Env, HexBinary,
+    MessageInfo, Response, StdError, Timestamp, Uint256, WasmMsg,
 };
 use euclid::{
     chain::ChainUid,
@@ -21,8 +21,8 @@ use sha2::{Digest, Sha256};
 use crate::{
     error::ContractError,
     state::{
-        RootConfig, RootInfo, ADMIN, ASSET_DEPOSITS, CURRENT_ROOT, NULLIFIERS, PENDING_ROOT,
-        ROOT_CONFIG, STATE, USED_PERMITS, USER_DEPOSITS, WHITELISTED_ASSETS,
+        RootConfig, RootInfo, ADMIN, ASSET_DEPOSITS, CONSUMED_WITHDRAWALS, CURRENT_ROOT,
+        PENDING_ROOT, ROOT_CONFIG, STATE, USED_PERMITS, USER_DEPOSITS, WHITELISTED_ASSETS,
     },
 };
 
@@ -82,18 +82,21 @@ pub fn execute(
             permit,
             destination_chain_uid,
             destination,
-        } => execute_withdraw(
-            deps,
-            env,
-            root_id,
-            amount,
-            nonce,
-            leaf,
-            proof,
-            permit,
-            destination_chain_uid,
-            destination,
-        ),
+        } => {
+            cw_utils::nonpayable(&info)?;
+            execute_withdraw(
+                deps,
+                env,
+                root_id,
+                amount,
+                nonce,
+                leaf,
+                proof,
+                permit,
+                destination_chain_uid,
+                destination,
+            )
+        }
     }
 }
 
@@ -103,6 +106,7 @@ fn execute_voucher_receive(
     info: MessageInfo,
     transfer: VoucherReceive,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         info.sender == state.virtual_balance,
@@ -116,7 +120,8 @@ fn execute_voucher_receive(
     let hook: VoucherReceiveHookMsg = from_json(transfer.msg.clone())?;
     match hook {
         VoucherReceiveHookMsg::Deposit {} => {
-            execute_deposit(deps, transfer.token_id, transfer.amount, transfer.sender)
+            let amount: Uint256 = transfer.amount;
+            execute_deposit(deps, transfer.token_id, amount, transfer.sender)
         }
     }
 }
@@ -124,7 +129,7 @@ fn execute_voucher_receive(
 fn execute_deposit(
     deps: DepsMut,
     token_id: String,
-    amount: Uint128,
+    amount: Uint256,
     sender: CrossChainUser,
 ) -> Result<Response, ContractError> {
     ensure!(!amount.is_zero(), ContractError::InvalidAmount {});
@@ -170,6 +175,7 @@ fn execute_set_whitelist(
     token_id: String,
     whitelisted: bool,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let admin = ADMIN.load(deps.storage)?;
     ensure!(info.sender == admin, ContractError::Unauthorized {});
 
@@ -194,6 +200,7 @@ fn execute_update_config(
     permit_signer_address: Option<String>,
     authorized_posters: Option<Vec<String>>,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let mut state = STATE.load(deps.storage)?;
     let current_admin = ADMIN.load(deps.storage)?;
     ensure!(info.sender == current_admin, ContractError::Unauthorized {});
@@ -244,6 +251,7 @@ fn execute_propose_root(
     da_hash: Option<Binary>,
     da_url: Option<String>,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         matches!(state.status, OrderbookDepositsStatus::Active),
@@ -289,6 +297,7 @@ fn execute_activate_root(
     info: MessageInfo,
     root_id: String,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         matches!(state.status, OrderbookDepositsStatus::Active),
@@ -327,7 +336,7 @@ fn execute_withdraw(
     deps: DepsMut,
     env: Env,
     root_id: String,
-    amount: Uint128,
+    amount: Uint256,
     nonce: u64,
     leaf: WithdrawalLeaf,
     proof: Vec<MerkleProofStep>,
@@ -394,7 +403,17 @@ fn execute_withdraw(
             .unwrap_or(false),
         ContractError::PermitAlreadyUsed {}
     );
-    USED_PERMITS.save(deps.storage, permit_key, &true)?;
+    let consumed_key = (
+        permit_data.user.clone(),
+        permit_data.token_id.clone(),
+        nonce,
+    );
+    ensure!(
+        !CONSUMED_WITHDRAWALS
+            .may_load(deps.storage, consumed_key.clone())?
+            .unwrap_or(false),
+        ContractError::WithdrawalAlreadyConsumed {}
+    );
 
     let leaf_hash = hash_leaf(&leaf)?;
     let computed_root = apply_merkle_proof(leaf_hash, &proof)?;
@@ -402,23 +421,10 @@ fn execute_withdraw(
         computed_root.as_ref() == current_root.root_hash.as_slice(),
         ContractError::InvalidMerkleProof {}
     );
-
-    let nullifier_key = nullifier_key(&root_id, &permit_data.user, &permit_data.token_id, nonce);
-    let already_withdrawn = NULLIFIERS
-        .may_load(deps.storage, nullifier_key.clone())?
-        .unwrap_or_default();
-    let remaining = leaf
-        .balance
-        .checked_sub(already_withdrawn)
-        .map_err(|_| ContractError::InsufficientWithdrawableBalance {})?;
     ensure!(
-        amount <= remaining,
+        amount <= leaf.balance,
         ContractError::InsufficientWithdrawableBalance {}
     );
-    let new_withdrawn = already_withdrawn
-        .checked_add(amount)
-        .map_err(StdError::from)?;
-    NULLIFIERS.save(deps.storage, nullifier_key, &new_withdrawn)?;
 
     let asset_total = ASSET_DEPOSITS
         .may_load(deps.storage, permit_data.token_id.clone())?
@@ -438,12 +444,15 @@ fn execute_withdraw(
         .unwrap_or_default();
     let new_user_total = user_total
         .checked_sub(amount)
-        .unwrap_or_else(|_| Uint128::zero());
+        .unwrap_or_else(|_| Uint256::zero());
     if new_user_total.is_zero() {
         USER_DEPOSITS.remove(deps.storage, user_key);
     } else {
         USER_DEPOSITS.save(deps.storage, user_key, &new_user_total)?;
     }
+
+    USED_PERMITS.save(deps.storage, permit_key, &true)?;
+    CONSUMED_WITHDRAWALS.save(deps.storage, consumed_key, &true)?;
 
     let destination_chain_uid = ChainUid::create(destination_chain_uid)?;
     let destination_user = CrossChainUser::new(destination_chain_uid, destination.clone());
@@ -509,7 +518,7 @@ fn verify_permit(
     env: &Env,
     config: &RootConfig,
     root_id: &str,
-    amount: Uint128,
+    amount: Uint256,
     nonce: u64,
     leaf: &WithdrawalLeaf,
     destination_chain_uid: &str,
@@ -563,7 +572,7 @@ fn verify_permit(
 
 fn permit_id(permit: &Permit) -> String {
     let digest: [u8; 32] = Sha256::digest(permit.data.as_bytes()).into();
-    to_hex(&digest)
+    HexBinary::from(digest).to_hex()
 }
 
 fn hash_leaf(leaf: &WithdrawalLeaf) -> Result<[u8; 32], ContractError> {
@@ -598,27 +607,47 @@ fn hash_bytes(data: &[u8]) -> [u8; 32] {
     Sha256::digest(data).into()
 }
 
-fn to_hex(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(HEX[(byte >> 4) as usize] as char);
-        out.push(HEX[(byte & 0x0f) as usize] as char);
-    }
-    out
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-fn nullifier_key(root_id: &str, user: &str, token_id: &str, nonce: u64) -> String {
-    let mut data = Vec::with_capacity(
-        root_id.len() + user.len() + token_id.len() + std::mem::size_of::<u64>() + 3,
-    );
-    data.extend_from_slice(root_id.as_bytes());
-    data.push(0);
-    data.extend_from_slice(user.as_bytes());
-    data.push(0);
-    data.extend_from_slice(token_id.as_bytes());
-    data.push(0);
-    data.extend_from_slice(&nonce.to_be_bytes());
-    let digest = hash_bytes(&data);
-    to_hex(&digest)
+    fn manual_to_hex(bytes: &[u8]) -> String {
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let mut out = String::with_capacity(bytes.len() * 2);
+        for byte in bytes {
+            out.push(HEX[(byte >> 4) as usize] as char);
+            out.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+        out
+    }
+
+    #[test]
+    fn hexbinary_matches_previous_manual_hex_encoding() {
+        let cases: Vec<Vec<u8>> = vec![
+            vec![],
+            vec![0x00],
+            vec![0x00, 0x0a, 0xff, 0x10],
+            vec![0xde, 0xad, 0xbe, 0xef],
+        ];
+
+        for bytes in cases {
+            assert_eq!(
+                HexBinary::from(bytes.clone()).to_hex(),
+                manual_to_hex(&bytes)
+            );
+        }
+    }
+
+    #[test]
+    fn permit_id_matches_known_sha256_hex() {
+        let permit = Permit {
+            data: "hello".to_string(),
+            signature: Binary::default(),
+        };
+
+        assert_eq!(
+            permit_id(&permit),
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+    }
 }

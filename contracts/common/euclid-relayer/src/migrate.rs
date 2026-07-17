@@ -1,7 +1,9 @@
 use crate::contract::{CONTRACT_NAME, CONTRACT_VERSION};
 use crate::state::{ADMIN, STATE};
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{entry_point, DepsMut, Env, Response};
+#[cfg(not(feature = "library"))]
+use cosmwasm_std::entry_point;
+use cosmwasm_std::{DepsMut, Env, Response};
 use cw2::set_contract_version;
 use cw_storage_plus::Item;
 use euclid::{admin::EuclidAdmin, error::ContractError};
@@ -31,6 +33,7 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    euclid::build_info::set_build_info(deps.storage)?;
     Ok(Response::new()
         .add_attribute("method", "migrate")
         .add_attribute("admins_migrated", migrated.to_string()))

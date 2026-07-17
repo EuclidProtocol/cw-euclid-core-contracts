@@ -1,4 +1,5 @@
 pub mod admin;
+pub mod build_info;
 pub mod chain;
 pub mod cross_chain_user;
 pub mod deposit;
@@ -15,3 +16,5 @@ pub mod timeout;
 pub mod token;
 pub mod utils;
 pub mod voucher;
+
+pub mod normalize;

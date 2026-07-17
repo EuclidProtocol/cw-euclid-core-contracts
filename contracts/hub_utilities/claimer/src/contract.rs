@@ -28,6 +28,7 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    euclid::build_info::set_build_info(deps.storage)?;
 
     let state = State {
         vcoin_address: msg.vcoin_address.clone(),
@@ -93,5 +94,9 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractErr
         QueryMsg::GetClaimByPseudoClaimId { pseudo_claim_id } => Ok(to_json_binary(
             &get_claim_by_pseudo_claim_id(&deps, pseudo_claim_id)?,
         )?),
+        QueryMsg::GetBuildInfo {} => Ok(to_json_binary(&euclid::build_info::build_info(
+            deps.storage,
+            CONTRACT_VERSION,
+        ))?),
     }
 }

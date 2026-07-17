@@ -4,22 +4,55 @@ use cw_orch::prelude::CwOrchError;
 
 /// Extract the innermost error message from a CwOrchError chain.
 ///
-/// Uses cw-orch's built-in `.root()` for `AnyError` variants (contract errors),
-/// which delegates to `anyhow::Error::root_cause()`. Falls back to walking the
-/// `source()` chain for other variants (chain-level errors like missing addresses
-/// in submsg calls) where `.root()` would panic.
-#[allow(dead_code)]
+/// Uses multiple strategies to dig through cw-multi-test's error wrapping:
+/// 1. Parse Debug output for the deepest non-WasmMsg "Error - " line
+/// 2. Search for "error type: " markers (ContractError, StdError)
+/// 3. Fall back to .root() or source() chain walking
 pub(crate) fn root_cause(e: &CwOrchError) -> String {
-    // CwEnvError::root() only handles the AnyError variant and panics otherwise.
-    // Contract execution errors always flow through AnyError, so try that first.
-    if let CwOrchError::AnyError(_) = e {
-        return e.root().to_string();
+    let full = format!("{:?}", e);
+
+    // The Debug format is a chain of "Caused by:" sections. The actual contract
+    // error is the last "Caused by:" entry — a bare message like:
+    //   "Caused by:\n            Cannot Sub with given operands)"
+    // or with an "Error - " prefix for non-submsg errors.
+    //
+    // Walk all "Caused by:" sections and take the last non-WasmMsg message.
+    let mut best = String::new();
+    for section in full.split("Caused by:") {
+        let trimmed = section.trim().trim_end_matches(')').trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // Skip WasmMsg wrapper sections
+        if trimmed.starts_with("Error - Error executing WasmMsg")
+            || trimmed.starts_with("Error executing WasmMsg")
+        {
+            continue;
+        }
+        // Strip "Action - ..., Error - " prefix from router reply sections
+        if let Some(idx) = trimmed.find(", Error - ") {
+            let after = &trimmed[idx + ", Error - ".len()..];
+            if !after.starts_with("Error executing WasmMsg") {
+                best = after.to_string();
+                continue;
+            }
+        }
+        // Strip "Error - " prefix
+        if let Some(msg) = trimmed.strip_prefix("Error - ") {
+            best = msg.to_string();
+        } else {
+            best = trimmed.to_string();
+        }
     }
 
-    // Fallback for non-AnyError variants: walk the source chain manually.
-    let mut current: &dyn StdError = e;
-    while let Some(source) = current.source() {
-        current = source;
+    if best.is_empty() {
+        // Fallback: walk source chain
+        let mut current: &dyn StdError = e;
+        while let Some(source) = current.source() {
+            current = source;
+        }
+        best = current.to_string();
     }
-    current.to_string()
+
+    best.trim_end_matches(')').trim().to_string()
 }

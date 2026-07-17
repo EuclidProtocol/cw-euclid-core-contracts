@@ -1,7 +1,7 @@
 # Stable Swap Math: Security Audit Report
 
 **Date:** 2026-03-25 (updated 2026-03-26)
-**Scope:** `packages/pool/src/stable_math.rs` and its integration via `pool_functions.rs`
+**Scope:** `packages/pool/src/stable_math.rs` and its integration via `stable.rs` / `common.rs`
 **Context:** All stable swap inputs are `Uint128` integer amounts (range: 0 to ~3.4e38). The stable swap math operates on `Decimal256` (18 internal decimal places) internally. This report identifies vulnerabilities and tracks their resolution.
 
 ## Summary

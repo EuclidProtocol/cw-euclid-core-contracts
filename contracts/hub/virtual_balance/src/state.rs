@@ -1,16 +1,65 @@
-use cosmwasm_std::Uint128;
-use cw_storage_plus::{Item, Map};
+// The legacy `Allowance` struct / `BALANCES` / `ALLOWANCES` below are kept
+// `#[deprecated]` only for the VOUCHER_* migration. Their `#[cw_serde]` derive
+// and the `ALLOWANCES` type annotation re-reference them internally, and a
+// derive emits sibling impls an item-level allow can't reach, so the allow
+// lives at module scope. External crates still get the deprecation warning.
+#![allow(deprecated)]
+
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::{Uint128, Uint256};
+use cw_storage_plus::{Item, Map, Path};
 use euclid::{
     admin::EuclidAdmin,
-    msgs::virtual_balance::{msg::State, Allowance},
+    chain::ChainUid,
+    cross_chain_user::CrossChainUser,
+    msgs::virtual_balance::{msg::State, VoucherAllowance},
+    token::{TokenMetadata, TokenType},
     voucher::SerializedBalanceKey,
 };
 
 pub const STATE: Item<State> = Item::new("state");
 pub const ADMIN: Item<EuclidAdmin> = Item::new("admin");
 
+pub const VOUCHER_DECIMAL: u32 = 24;
+#[deprecated(note = "BALANCES has been moved to VOUCHER_BALANCES")]
 pub const BALANCES: Map<SerializedBalanceKey, Uint128> = Map::new("balances");
+
+// Voucher balances are stored as Uint256 to avoid precision loss.
+pub const VOUCHER_BALANCES: Map<SerializedBalanceKey, Uint256> = Map::new("voucher_balances");
+
+#[deprecated(note = "ALLOWANCES has been moved to VOUCHER_ALLOWANCES")]
+#[cw_serde]
+pub struct Allowance {
+    pub spender: CrossChainUser,
+    pub amount: Uint128,
+}
 
 // Allowance is stored as a map of balance key to allowance. It allows another user to spend on behalf of the owner.
 // Only 1 allowance per balance key is allowed at a time.
+#[deprecated(note = "ALLOWANCES has been moved to VOUCHER_ALLOWANCES")]
 pub const ALLOWANCES: Map<SerializedBalanceKey, Allowance> = Map::new("allowances");
+
+pub const VOUCHER_ALLOWANCES: Map<SerializedBalanceKey, VoucherAllowance> =
+    Map::new("voucher_allowances");
+
+// Token Metadata: map of (token_id, chain_uid, token_type_key) to TokenMetadata.
+pub const TOKEN_METADATA: Map<(String, ChainUid, String), TokenMetadata> =
+    Map::new("token_metadata");
+
+pub fn get_token_metadata_key(
+    token: String,
+    chain_uid: ChainUid,
+    token_type: TokenType,
+) -> Path<TokenMetadata> {
+    TOKEN_METADATA.key((token, chain_uid, token_type.get_key()))
+}
+
+pub const ESCROW_BALANCES: Map<(String, ChainUid, String), Uint256> = Map::new("escrow_balances");
+
+pub fn get_escrow_balance_key(
+    token: String,
+    chain_uid: ChainUid,
+    token_type: TokenType,
+) -> Path<Uint256> {
+    ESCROW_BALANCES.key((token, chain_uid, token_type.get_key()))
+}

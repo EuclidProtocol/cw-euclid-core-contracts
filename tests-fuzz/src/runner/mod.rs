@@ -23,6 +23,24 @@ pub struct FuzzRunner<P: FuzzPool> {
     pub coverage: InvariantCoverage,
 }
 
+/// Get a seed from `FUZZ_SEED` env var (for reproducibility) or generate
+/// a random one from system entropy. Always prints the seed so failures
+/// can be reproduced with `FUZZ_SEED=<value>`.
+pub fn fuzz_seed() -> u64 {
+    match std::env::var("FUZZ_SEED") {
+        Ok(val) => {
+            let seed = val.parse::<u64>().expect("FUZZ_SEED must be a u64");
+            println!("Using FUZZ_SEED={}", seed);
+            seed
+        }
+        Err(_) => {
+            let seed = rand::random::<u64>();
+            println!("Random seed={} (reproduce with FUZZ_SEED={})", seed, seed);
+            seed
+        }
+    }
+}
+
 impl<P: FuzzPool> FuzzRunner<P> {
     /// Create a runner with a fresh pool from config and a deterministic RNG.
     pub fn new(config: &P::Config, seed: u64) -> Self {
@@ -33,6 +51,11 @@ impl<P: FuzzPool> FuzzRunner<P> {
             stats: RunStats::new(),
             coverage: InvariantCoverage::new(),
         }
+    }
+
+    /// Create a runner with a random seed (or from FUZZ_SEED env var).
+    pub fn new_random(config: &P::Config) -> Self {
+        Self::new(config, fuzz_seed())
     }
 
     /// Seed initial liquidity positions.
@@ -46,7 +69,7 @@ impl<P: FuzzPool> FuzzRunner<P> {
         let result = self.pool.execute_op(op);
         let elapsed = start.elapsed();
         let op_name = P::op_name(op);
-        self.stats.record(op_name, result.is_ok(), elapsed);
+        self.stats.record(op_name, &result, elapsed);
         (result, elapsed)
     }
 
@@ -75,12 +98,18 @@ impl<P: FuzzPool> FuzzRunner<P> {
         if result.all_passed() {
             return;
         }
+        let details: Vec<String> = result
+            .checks
+            .iter()
+            .filter(|c| !c.passed)
+            .map(|c| format!("  {} — {}", c.name, c.detail))
+            .collect();
         panic!(
-            "Transition invariant violated at op {} ({:?}, seed={}): {:?}",
+            "Transition invariant violated at op {} ({:?}, seed={}):\n{}",
             op_idx,
             op,
             self.seed,
-            result.failed_names()
+            details.join("\n")
         );
     }
 
@@ -222,10 +251,10 @@ impl<P: FuzzPool> FuzzRunner<P> {
             FULL_CHECK_INTERVAL,
         );
 
-        // Take initial light snapshot — reused as `before` for the first op.
-        // After each successful op, `current` becomes the next `before`,
-        // cutting snapshot queries from 2 per op to 1.
-        let mut current = self.pool.light_snapshot();
+        // Take initial full snapshot so the first full-check cycle (op 0)
+        // gets a coherent before/after pair. After each op, `current` becomes
+        // the next `before`, cutting snapshot queries from 2 per op to 1.
+        let mut current = self.pool.snapshot();
 
         while SystemTime::now() < end {
             let op = self.pool.random_op(&mut self.rng);
@@ -238,8 +267,14 @@ impl<P: FuzzPool> FuzzRunner<P> {
             if SystemTime::now() >= next_report {
                 let elapsed = SystemTime::now().duration_since(start).unwrap_or_default();
                 let remaining = duration.saturating_sub(elapsed);
+                let err_info = self.stats.error_breakdown();
+                let err_line = if err_info.is_empty() {
+                    String::new()
+                } else {
+                    format!("\n    {}", err_info)
+                };
                 println!(
-                    "  [{}] {} ops ({} ok, {} err), ~{:.0} ops/sec, {} remaining\n    {}",
+                    "  [{}] {} ops ({} ok, {} err), ~{:.0} ops/sec, {} remaining\n    {}{}",
                     humanize_duration(elapsed),
                     self.stats.total_ops,
                     self.stats.success_count,
@@ -247,6 +282,7 @@ impl<P: FuzzPool> FuzzRunner<P> {
                     self.stats.total_ops as f64 / elapsed.as_secs_f64(),
                     humanize_duration(remaining),
                     self.stats.op_breakdown(),
+                    err_line,
                 );
                 next_report = SystemTime::now() + report_interval;
             }
@@ -286,12 +322,15 @@ impl<P: FuzzPool> FuzzRunner<P> {
             seed,
         );
 
+        let mut aggregate_stats = RunStats::new();
+
         while SystemTime::now() <= end {
             let iter_seed = seed.wrapping_add(iterations);
             let mut runner = FuzzRunner::<P>::new(config, iter_seed);
             runner.seed(seed_positions);
             runner.run_mixed(ops_per_iter);
             aggregate_coverage.merge(&runner.coverage);
+            aggregate_stats.merge(&runner.stats);
             total_ops += ops_per_iter;
             iterations += 1;
         }
@@ -304,6 +343,7 @@ impl<P: FuzzPool> FuzzRunner<P> {
             humanize_duration(elapsed),
             total_ops as f64 / elapsed.as_secs_f64(),
         );
+        aggregate_stats.print_summary("aggregate", seed);
         aggregate_coverage.print_report();
     }
 }

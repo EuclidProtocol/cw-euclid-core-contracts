@@ -13,14 +13,13 @@ mod tests {
     use euclid::msgs::router::execute::ExecuteMsgFns as RouterExecuteMsgFns;
     use euclid::msgs::router::{RegisterFactoryChainEvm, RegisterFactoryChainType};
     use euclid::token::{Token, TokenType, TokenWithDenom};
-    use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
     use factory::FactoryContract;
     use router::RouterContract;
 
     use crate::helpers::chains::{setup_factory, setup_interchain, setup_router};
     use crate::helpers::relayer::{
-        ack_register_factory_evm, extract_send_packet_events, relay_factory_ack_packet,
-        relay_factory_send_packet,
+        ack_register_factory_evm, decode_factory_receive_msg, extract_send_packet_events,
+        relay_factory_ack_packet, relay_factory_send_packet,
     };
     use crate::tests_reusable::constants::{
         FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, ROUTER_CHAIN_ID,
@@ -90,6 +89,9 @@ mod tests {
             .is_some()
     }
 
+    // Cross-VM coverage:
+    //   testing/euclid-tests/tests/protocol/failures.rs::pending_packet_count_and_tx_id_shape
+    //   testing/euclid-tests/tests/protocol/denom/packets.rs::register_without_relay_stays_pending
     #[test]
     fn factory_pending_packet_counts_increment_and_decrement() {
         let sender = "sender_for_all_chains";
@@ -105,6 +107,7 @@ mod tests {
             token: Token::create("pendingcheck".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "pendingcheck".to_string(),
+                decimals: Some(18),
             },
         };
 
@@ -131,6 +134,7 @@ mod tests {
         assert_eq!(query_factory_pending_count(&factory), 0);
     }
 
+    // Cross-VM coverage: none (CosmWasm-only)
     #[test]
     fn factory_pending_send_packets_keep_existing_sequences() {
         let sender = "sender_for_all_chains";
@@ -145,12 +149,14 @@ mod tests {
             token: Token::create("pendingone".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "pendingone".to_string(),
+                decimals: Some(18),
             },
         };
         let token_two = TokenWithDenom {
             token: Token::create("pendingtwo".to_string()).unwrap(),
             token_type: TokenType::Native {
                 denom: "pendingtwo".to_string(),
+                decimals: Some(18),
             },
         };
 
@@ -167,6 +173,7 @@ mod tests {
         assert_eq!(query_factory_pending_count(&factory), 2);
     }
 
+    // Cross-VM coverage: none (CosmWasm-only)
     #[test]
     fn factory_rate_limit_does_not_accumulate_after_successful_acks() {
         let sender = "sender_for_all_chains";
@@ -181,7 +188,10 @@ mod tests {
             let token_id = format!("ratelimit{i}");
             let token = TokenWithDenom {
                 token: Token::create(token_id.clone()).unwrap(),
-                token_type: TokenType::Native { denom: token_id },
+                token_type: TokenType::Native {
+                    denom: token_id,
+                    decimals: Some(18),
+                },
             };
             let tx = factory
                 .register_denom(CrossChainConfig::default(), token)
@@ -195,6 +205,7 @@ mod tests {
         assert_eq!(query_factory_pending_count(&factory), 0);
     }
 
+    // Cross-VM coverage: none (CosmWasm-only)
     #[test]
     fn router_pending_packet_counts_increment_and_decrement_for_evm_registration() {
         let sender = "sender_for_all_chains";
@@ -221,7 +232,7 @@ mod tests {
             .into_iter()
             .next()
             .unwrap();
-        let packet_msg: FactoryCrossChainExecuteMsg = from_json(&packet.msg).unwrap();
+        let packet_msg = decode_factory_receive_msg(&packet);
         let tx_id = packet_msg.get_tx_id();
         ack_register_factory_evm(
             &router,
@@ -236,6 +247,7 @@ mod tests {
         assert_eq!(query_router_pending_count(&router, chain_uid), 0);
     }
 
+    // Cross-VM coverage: none (CosmWasm-only)
     #[test]
     fn router_pending_send_packets_keep_existing_sequences() {
         let sender = "sender_for_all_chains";

@@ -1,9 +1,14 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Binary, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint256};
 
 use crate::msgs::orderbook_deposits::AssetTotal;
 #[cw_serde]
 #[derive(QueryResponses)]
+#[cfg_attr(feature = "cross-vm", derive(cross_vm_macros::CwQueryFns))]
+#[cfg_attr(
+    feature = "cross-vm",
+    cross_vm(trait_name = "OrderbookDepositsQueryFns")
+)]
 pub enum QueryMsg {
     #[returns(StateResponse)]
     State {},
@@ -20,6 +25,12 @@ pub enum QueryMsg {
     },
     #[returns(RootResponse)]
     CurrentRoot {},
+    #[returns(PendingRootResponse)]
+    GetPendingRoot {},
+    #[returns(RootConfigResponse)]
+    GetRootConfig {},
+    #[returns(crate::build_info::BuildInfoResponse)]
+    GetBuildInfo {},
 }
 
 #[cw_serde]
@@ -32,14 +43,14 @@ pub struct StateResponse {
 #[cw_serde]
 pub struct AssetDepositResponse {
     pub token_id: String,
-    pub amount: Uint128,
+    pub amount: Uint256,
 }
 
 #[cw_serde]
 pub struct UserDepositResponse {
     pub user: String,
     pub token_id: String,
-    pub amount: Uint128,
+    pub amount: Uint256,
 }
 
 #[cw_serde]
@@ -61,4 +72,17 @@ pub struct RootResponse {
     pub da_hash: Option<Binary>,
     pub da_url: Option<String>,
     pub proposed_at: u64,
+}
+
+#[cw_serde]
+pub struct PendingRootResponse {
+    pub pending_root: Option<RootResponse>,
+}
+
+#[cw_serde]
+pub struct RootConfigResponse {
+    pub permit_signer_pubkey: Option<Binary>,
+    pub permit_signer_address: Option<String>,
+    pub root_challenge_period: u64,
+    pub authorized_posters: Vec<Addr>,
 }

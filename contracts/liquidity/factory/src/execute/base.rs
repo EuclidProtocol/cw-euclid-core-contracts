@@ -1,4 +1,7 @@
-use cosmwasm_std::{ensure, from_json, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{
+    ensure, from_json, to_json_binary, Binary, CosmosMsg, DepsMut, Env, MessageInfo, ReplyOn,
+    Response, SubMsg, Uint256, WasmMsg,
+};
 use cw20::Cw20ReceiveMsg;
 use euclid::{
     admin,
@@ -18,7 +21,8 @@ use crate::{
     execute::{
         pool::remove_liquidity_request, swap::execute_swap_request, token::execute_deposit_token,
     },
-    state::{ADMIN, STATE},
+    reply::POSITION_TOKEN_INSTANTIATE_REPLY_ID,
+    state::{ADMIN, POSITION_TOKEN_CONTRACT, REGISTERED, STATE},
 };
 
 pub fn execute_manage_factory_state(
@@ -27,6 +31,7 @@ pub fn execute_manage_factory_state(
     info: MessageInfo,
     msg: ManageFactoryState,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let mut state = STATE.load(deps.storage)?;
     let mut admins = ADMIN.load(deps.storage)?;
     match msg {
@@ -65,6 +70,64 @@ pub fn execute_manage_factory_state(
             STATE.save(deps.storage, &state)?;
             Ok(Response::new().add_attribute("relayer_address", relayer_address))
         }
+        ManageFactoryState::UpdatePositionTokenCodeId {
+            position_token_code_id,
+        } => {
+            ensure!(
+                admins.migration_admin == info.sender,
+                ContractError::Unauthorized {}
+            );
+            state.position_token_code_id = position_token_code_id;
+            STATE.save(deps.storage, &state)?;
+            Ok(Response::new()
+                .add_attribute("position_token_code_id", position_token_code_id.to_string()))
+        }
+        ManageFactoryState::RegisterPositionToken {} => {
+            ensure!(
+                admins.migration_admin == info.sender,
+                ContractError::Unauthorized {}
+            );
+            ensure!(
+                POSITION_TOKEN_CONTRACT.may_load(deps.storage)?.is_none(),
+                ContractError::new("Position token contract already registered")
+            );
+            ensure!(
+                state.position_token_code_id > 0,
+                ContractError::new("Position token code ID not set")
+            );
+
+            let init_msg = CosmosMsg::Wasm(WasmMsg::Instantiate {
+                admin: Some(admins.migration_admin.into_string()),
+                code_id: state.position_token_code_id,
+                msg: to_json_binary(&euclid::msgs::position_token::InstantiateMsg {
+                    name: "Euclid Concentrated Positions".to_string(),
+                    symbol: "EUPOS".to_string(),
+                })?,
+                funds: vec![],
+                label: "position_token".to_string(),
+            });
+
+            Ok(Response::new()
+                .add_submessage(SubMsg {
+                    id: POSITION_TOKEN_INSTANTIATE_REPLY_ID,
+                    msg: init_msg,
+                    gas_limit: None,
+                    reply_on: ReplyOn::Always,
+                    payload: Binary::default(),
+                })
+                .add_attribute("action", "register_position_token"))
+        }
+        ManageFactoryState::ResetRegistration {} => {
+            ensure!(
+                admins.migration_admin == info.sender,
+                ContractError::Unauthorized {}
+            );
+            // Clear the flag so a fresh RegisterFactory can re-register this factory.
+            // The duplicate guard in `execute_register_router` is unchanged; this only
+            // re-opens registration after one that never settled on the router.
+            REGISTERED.save(deps.storage, &false)?;
+            Ok(Response::new().add_attribute("action", "reset_registration"))
+        }
     }
 }
 
@@ -77,6 +140,7 @@ pub fn receive_cw20(
     info: MessageInfo,
     cw20_msg: Cw20ReceiveMsg,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(&info)?;
     let state = STATE.load(deps.storage)?;
 
     let sender = CrossChainUser::new(state.chain_uid.clone(), cw20_msg.sender);
@@ -89,10 +153,15 @@ pub fn receive_cw20(
         } => {
             let contract_adr = info.sender.clone();
 
+            // Decimals are intentionally left `None` here: the escrow's
+            // TokenAllowed check matches denoms decimals-agnostically and the
+            // hub derives the canonical decimals from the registered token
+            // metadata, so the deposit need not carry them.
             let asset_in = token.with_type(TokenType::Smart {
                 contract_address: contract_adr.to_string(),
+                decimals: None,
             });
-            let amount_in = cw20_msg.amount;
+            let amount_in = Uint256::from(cw20_msg.amount);
 
             // ensure that the contract address is the same as the asset contract address
             execute_deposit_token(
@@ -116,7 +185,7 @@ pub fn receive_cw20(
             env,
             sender,
             pair,
-            cw20_msg.amount,
+            Uint256::from(cw20_msg.amount),
             recipient,
             cross_chain_config,
         ),
@@ -138,7 +207,7 @@ pub fn receive_cw20(
                 ContractError::AssetDoesNotExist {}
             );
 
-            let amount_in = cw20_msg.amount;
+            let amount_in = Uint256::from(cw20_msg.amount);
 
             // ensure that the contract address is the same as the asset contract address
             execute_swap_request(
@@ -157,9 +226,14 @@ pub fn receive_cw20(
             )
         }
 
-        FactoryCw20HookMsg::EuclidReceive(euclid_receive) => {
-            receive_euclid_cw20(deps, env, info, sender, cw20_msg.amount, euclid_receive)
-        }
+        FactoryCw20HookMsg::EuclidReceive(euclid_receive) => receive_euclid_cw20(
+            deps,
+            env,
+            info,
+            sender,
+            Uint256::from(cw20_msg.amount),
+            euclid_receive,
+        ),
     }
 }
 
@@ -179,12 +253,13 @@ pub fn receive_euclid_native(
             cross_chain_config,
             partner_fee,
         } => {
-            let amount_in = if let TokenType::Native { denom } = &asset_in.token_type {
+            let amount_in: Uint256 = if let TokenType::Native { denom, .. } = &asset_in.token_type {
                 info.funds
                     .iter()
                     .find(|fund| fund.denom == *denom)
                     .ok_or(ContractError::InsufficientFunds {})?
                     .amount
+                    .into()
             } else {
                 return Err(ContractError::InvalidAsset {
                     asset: asset_in.token.to_string(),
@@ -216,7 +291,7 @@ pub fn receive_euclid_cw20(
     env: Env,
     info: MessageInfo,
     sender: CrossChainUser,
-    amount: Uint128,
+    amount: Uint256,
     euclid_msg: EuclidReceive,
 ) -> Result<Response, ContractError> {
     match from_json::<FactoryEuclidReceiveHook>(euclid_msg.msg.clone())? {
@@ -248,6 +323,190 @@ pub fn receive_euclid_cw20(
                 partner_fee,
             )?;
             Ok(response)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::testing::{message_info, mock_dependencies, mock_env};
+    use euclid::{
+        admin::AdminType,
+        error::ContractError,
+        msgs::factory::{ExecuteMsg, ManageFactoryState},
+    };
+    use rstest::rstest;
+
+    use crate::{
+        contract::execute,
+        testing::helpers::{init, load_general_admin, load_state},
+    };
+
+    // -----------------------------------------------------------------------
+    // Execute: ManageFactoryState – UpdateEscrowCodeId
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    #[case::migration_admin_succeeds("sender", 42u64, None)]
+    #[case::non_admin_fails("other", 42u64, Some(ContractError::Unauthorized {}))]
+    fn test_update_escrow_code_id(
+        #[case] actor: &str,
+        #[case] new_id: u64,
+        #[case] expected_err: Option<ContractError>,
+    ) {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let actor_addr = deps.api.addr_make(actor);
+        let info = message_info(&actor_addr, &[]);
+        let msg = ExecuteMsg::ManageFactoryState(ManageFactoryState::UpdateEscrowCodeId {
+            escrow_code_id: new_id,
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+
+        match expected_err {
+            Some(err) => assert_eq!(res.unwrap_err(), err),
+            None => {
+                assert!(res.is_ok());
+                let state = load_state(&deps);
+                assert_eq!(state.escrow_code_id, new_id);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ManageFactoryState – UpdateLPCodeId
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    #[case::migration_admin_succeeds("sender", 99u64, None)]
+    #[case::non_admin_fails("other", 99u64, Some(ContractError::Unauthorized {}))]
+    fn test_update_lp_code_id(
+        #[case] actor: &str,
+        #[case] new_id: u64,
+        #[case] expected_err: Option<ContractError>,
+    ) {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let actor_addr = deps.api.addr_make(actor);
+        let info = message_info(&actor_addr, &[]);
+        let msg = ExecuteMsg::ManageFactoryState(ManageFactoryState::UpdateLPCodeId {
+            lp_code_id: new_id,
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+
+        match expected_err {
+            Some(err) => assert_eq!(res.unwrap_err(), err),
+            None => {
+                assert!(res.is_ok());
+                assert_eq!(load_state(&deps).lp_code_id, new_id);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ManageFactoryState – UpdateRelayerAddress
+    // -----------------------------------------------------------------------
+
+    #[rstest]
+    #[case::general_admin_succeeds("sender", None)]
+    #[case::non_admin_fails("other", Some(ContractError::Unauthorized {}))]
+    fn test_update_relayer_address(
+        #[case] actor: &str,
+        #[case] expected_err: Option<ContractError>,
+    ) {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let actor_addr = deps.api.addr_make(actor);
+        let new_relayer = deps.api.addr_make("new_relayer");
+        let info = message_info(&actor_addr, &[]);
+        let msg = ExecuteMsg::ManageFactoryState(ManageFactoryState::UpdateRelayerAddress {
+            relayer_address: new_relayer.to_string(),
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+
+        match expected_err {
+            Some(err) => assert_eq!(res.unwrap_err(), err),
+            None => {
+                assert!(res.is_ok());
+                assert_eq!(load_state(&deps).relayer_contract, new_relayer);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ManageFactoryState – UpdateAdmin
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_update_general_admin_succeeds() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let old_admin = deps.api.addr_make("sender");
+        let new_admin = deps.api.addr_make("new_admin");
+        let info = message_info(&old_admin, &[]);
+        let msg = ExecuteMsg::ManageFactoryState(ManageFactoryState::UpdateAdmin {
+            admin: new_admin.to_string(),
+            admin_type: AdminType::GeneralAdmin,
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert!(res.is_ok());
+        assert_eq!(load_general_admin(&deps), new_admin);
+    }
+
+    #[test]
+    fn test_update_admin_wrong_sender_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let non_admin = deps.api.addr_make("stranger");
+        let target = deps.api.addr_make("target");
+        let info = message_info(&non_admin, &[]);
+        let msg = ExecuteMsg::ManageFactoryState(ManageFactoryState::UpdateAdmin {
+            admin: target.to_string(),
+            admin_type: AdminType::FeeAdmin,
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert!(res.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ManageFactoryState – ResetRegistration
+    // -----------------------------------------------------------------------
+
+    /// The migration admin can clear the `REGISTERED` flag (recovery for a
+    /// registration that never settled on the router), and a non-admin cannot.
+    #[rstest]
+    #[case::migration_admin_succeeds("sender", None)]
+    #[case::non_admin_fails("other", Some(ContractError::Unauthorized {}))]
+    fn test_reset_registration(#[case] actor: &str, #[case] expected_err: Option<ContractError>) {
+        use crate::state::REGISTERED;
+
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        // Simulate a factory that has marked itself registered.
+        REGISTERED.save(deps.as_mut().storage, &true).unwrap();
+
+        let actor_addr = deps.api.addr_make(actor);
+        let info = message_info(&actor_addr, &[]);
+        let msg = ExecuteMsg::ManageFactoryState(ManageFactoryState::ResetRegistration {});
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+
+        match expected_err {
+            Some(err) => {
+                assert_eq!(res.unwrap_err(), err);
+                // An unauthorized call leaves the flag untouched.
+                assert!(REGISTERED.load(deps.as_ref().storage).unwrap());
+            }
+            None => {
+                assert!(res.is_ok());
+                // The flag is cleared, so a fresh RegisterFactory can re-register.
+                assert!(!REGISTERED.load(deps.as_ref().storage).unwrap());
+            }
         }
     }
 }

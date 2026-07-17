@@ -25,6 +25,7 @@ pub fn instantiate(
     msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    euclid::build_info::set_build_info(deps.storage)?;
 
     let cw20_resp = cw20_instantiate(deps.branch(), env.clone(), info, msg.clone().into())?;
     let state = State {
@@ -72,6 +73,10 @@ pub fn query(deps: Deps, env: Env, msg: QueryMsg) -> Result<Binary, ContractErro
             };
             Ok(to_json_binary(&response)?)
         }
+        QueryMsg::GetBuildInfo {} => Ok(to_json_binary(&euclid::build_info::build_info(
+            deps.storage,
+            CONTRACT_VERSION,
+        ))?),
         _ => Ok(cw20_query(deps, env, msg.into())?),
     }
 }

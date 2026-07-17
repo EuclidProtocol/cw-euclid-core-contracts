@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint128, Uint256};
 use cw20::{Cw20Coin, Logo, MinterResponse};
 use cw20_base::msg::{
     ExecuteMsg as Cw20ExecuteMsg, InstantiateMarketingInfo, InstantiateMsg as Cw20InstantiateMsg,
@@ -38,6 +38,8 @@ impl From<InstantiateMsg> for Cw20InstantiateMsg {
 
 #[cw_serde]
 #[derive(cw_orch::ExecuteFns)]
+#[cfg_attr(feature = "cross-vm", derive(cross_vm_macros::CwExecuteFns))]
+#[cfg_attr(feature = "cross-vm", cross_vm(trait_name = "LpTokenExecuteFns"))]
 pub enum ExecuteMsg {
     UpdateState {
         token_pair: Option<Pair>,
@@ -45,14 +47,14 @@ pub enum ExecuteMsg {
         vlp: Option<String>,
     },
     /// Transfer is a base message to move tokens to another account without triggering actions
-    Transfer { recipient: String, amount: Uint128 },
+    Transfer { recipient: String, amount: Uint256 },
     /// Burn is a base message to destroy tokens forever
-    Burn { amount: Uint128 },
+    Burn { amount: Uint256 },
     /// Send is a base message to transfer tokens to a contract and trigger an action
     /// on the receiving contract.
     Send {
         contract: String,
-        amount: Uint128,
+        amount: Uint256,
         msg: Binary,
     },
     /// Only with "approval" extension. Allows spender to access an additional amount tokens
@@ -60,7 +62,7 @@ pub enum ExecuteMsg {
     /// expiration with this one.
     IncreaseAllowance {
         spender: String,
-        amount: Uint128,
+        amount: Uint256,
         expires: Option<Expiration>,
     },
     /// Only with "approval" extension. Lowers the spender's access of tokens
@@ -68,7 +70,7 @@ pub enum ExecuteMsg {
     /// allowance expiration with this one.
     DecreaseAllowance {
         spender: String,
-        amount: Uint128,
+        amount: Uint256,
         expires: Option<Expiration>,
     },
     /// Only with "approval" extension. Transfers amount tokens from owner -> recipient
@@ -76,21 +78,21 @@ pub enum ExecuteMsg {
     TransferFrom {
         owner: String,
         recipient: String,
-        amount: Uint128,
+        amount: Uint256,
     },
     /// Only with "approval" extension. Sends amount tokens from owner -> contract
     /// if `env.sender` has sufficient pre-approval.
     SendFrom {
         owner: String,
         contract: String,
-        amount: Uint128,
+        amount: Uint256,
         msg: Binary,
     },
     /// Only with "approval" extension. Destroys tokens forever
-    BurnFrom { owner: String, amount: Uint128 },
+    BurnFrom { owner: String, amount: Uint256 },
     /// Only with the "mintable" extension. If authorized, creates amount new tokens
     /// and adds to the recipient balance.
-    Mint { recipient: String, amount: Uint128 },
+    Mint { recipient: String, amount: Uint256 },
     /// Only with the "marketing" extension. If authorized, updates marketing metadata.
     /// Setting None/null for any of these will leave it unchanged.
     /// Setting Some("") will clear this field on the contract storage
@@ -111,16 +113,18 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
         match msg {
             ExecuteMsg::Transfer { recipient, amount } => Cw20ExecuteMsg::Transfer {
                 recipient: recipient.to_string(),
-                amount,
+                amount: Uint128::try_from(amount).unwrap(),
             },
-            ExecuteMsg::Burn { amount } => Cw20ExecuteMsg::Burn { amount },
+            ExecuteMsg::Burn { amount } => Cw20ExecuteMsg::Burn {
+                amount: Uint128::try_from(amount).unwrap(),
+            },
             ExecuteMsg::Send {
                 contract,
                 amount,
                 msg,
             } => Cw20ExecuteMsg::Send {
                 contract: contract.to_string(),
-                amount,
+                amount: Uint128::try_from(amount).unwrap(),
                 msg,
             },
             ExecuteMsg::IncreaseAllowance {
@@ -129,7 +133,7 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
                 expires,
             } => Cw20ExecuteMsg::IncreaseAllowance {
                 spender,
-                amount,
+                amount: Uint128::try_from(amount).unwrap(),
                 expires,
             },
             ExecuteMsg::DecreaseAllowance {
@@ -138,7 +142,7 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
                 expires,
             } => Cw20ExecuteMsg::DecreaseAllowance {
                 spender,
-                amount,
+                amount: Uint128::try_from(amount).unwrap(),
                 expires,
             },
             ExecuteMsg::TransferFrom {
@@ -148,7 +152,7 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
             } => Cw20ExecuteMsg::TransferFrom {
                 owner,
                 recipient: recipient.to_string(),
-                amount,
+                amount: Uint128::try_from(amount).unwrap(),
             },
             ExecuteMsg::SendFrom {
                 owner,
@@ -158,11 +162,17 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
             } => Cw20ExecuteMsg::SendFrom {
                 owner,
                 contract: contract.to_string(),
-                amount,
+                amount: Uint128::try_from(amount).unwrap(),
                 msg,
             },
-            ExecuteMsg::BurnFrom { owner, amount } => Cw20ExecuteMsg::BurnFrom { owner, amount },
-            ExecuteMsg::Mint { recipient, amount } => Cw20ExecuteMsg::Mint { recipient, amount },
+            ExecuteMsg::BurnFrom { owner, amount } => Cw20ExecuteMsg::BurnFrom {
+                owner,
+                amount: Uint128::try_from(amount).unwrap(),
+            },
+            ExecuteMsg::Mint { recipient, amount } => Cw20ExecuteMsg::Mint {
+                recipient,
+                amount: Uint128::try_from(amount).unwrap(),
+            },
             ExecuteMsg::UpdateMarketing {
                 project,
                 description,
@@ -179,6 +189,8 @@ impl From<ExecuteMsg> for Cw20ExecuteMsg {
 
 #[cw_serde]
 #[derive(cw_orch::QueryFns, QueryResponses)]
+#[cfg_attr(feature = "cross-vm", derive(cross_vm_macros::CwQueryFns))]
+#[cfg_attr(feature = "cross-vm", cross_vm(trait_name = "LpTokenQueryFns"))]
 pub enum QueryMsg {
     //NOTE: Balance is included in andr_query
     /// Returns the current balance of the given address, 0 if unset.
@@ -233,6 +245,8 @@ pub enum QueryMsg {
     /// Returns the current state of the contract
     #[returns(StateResponse)]
     State {},
+    #[returns(crate::build_info::BuildInfoResponse)]
+    GetBuildInfo {},
 }
 
 #[cw_serde]

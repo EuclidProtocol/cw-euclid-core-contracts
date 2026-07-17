@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint256};
 
 use crate::{
     admin::{AdminType, EuclidAdmin},
@@ -13,6 +13,11 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 #[derive(cw_orch::ExecuteFns)]
+#[cfg_attr(feature = "cross-vm", derive(cross_vm_macros::CwExecuteFns))]
+#[cfg_attr(
+    feature = "cross-vm",
+    cross_vm(trait_name = "MetaTransactionExecuteFns")
+)]
 pub enum ExecuteMsg {
     ExecuteMetaTransaction(MetaTransaction),
     UpdateAdmin(UpdateAdminMsg),
@@ -20,12 +25,17 @@ pub enum ExecuteMsg {
 
 #[cw_serde]
 #[derive(cw_orch::QueryFns, QueryResponses)]
+#[cfg_attr(feature = "cross-vm", derive(cross_vm_macros::CwQueryFns))]
+#[cfg_attr(feature = "cross-vm", cross_vm(trait_name = "MetaTransactionQueryFns"))]
 pub enum QueryMsg {
     #[returns(StateResponse)]
     GetState {},
 
     #[returns(NonceRelayedResponse)]
     NonceRelayed { nonce: String },
+
+    #[returns(crate::build_info::BuildInfoResponse)]
+    GetBuildInfo {},
 }
 
 #[cw_serde]
@@ -70,7 +80,7 @@ pub struct MetaTransactionCallData {
 
 #[cw_serde]
 pub struct NonceRelayedResponse {
-    pub height: Uint128,
+    pub height: Uint256,
 }
 #[cw_serde]
 pub struct MigrateMsg {}

@@ -13,6 +13,8 @@ pub enum ExecuteMsg {}
 pub enum QueryMsg {
     #[returns(MultiQueryResponse)]
     MultiQuery { queries: Vec<MultiQuery> },
+    #[returns(euclid::build_info::BuildInfoResponse)]
+    GetBuildInfo {},
 }
 
 #[cw_serde]

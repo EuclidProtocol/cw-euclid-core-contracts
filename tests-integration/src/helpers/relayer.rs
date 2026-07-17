@@ -8,7 +8,7 @@ use cw_orch::{
 };
 use euclid::{
     chain::ChainUid,
-    events::{EUCLID_SEND_PACKET_EVENT, EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT},
+    events::{EUCLID_SEND_PACKET_ENCODED_EVENT, EUCLID_WRITE_ACKNOWLEDGEMENT_ENCODED_EVENT},
     msgs::{
         factory::{QueryMsgFns as FactoryQueryFns, RegisterFactoryResponse},
         router::{
@@ -16,7 +16,10 @@ use euclid::{
         },
     },
 };
-use euclid_ibc::{ack::AcknowledgementMsg, factory_ibc::FactoryCrossChainExecuteMsg};
+use euclid_ibc::wire::{
+    envelope::{factory::FactoryReceiveMsg, AcknowledgementMsg},
+    msgs::RegisterFactorySendMsg,
+};
 use factory::FactoryContract;
 use k256::{ecdsa::SigningKey, elliptic_curve::NonZeroScalar};
 use relayer::{
@@ -59,6 +62,7 @@ fn relay_factory_send_packet_inner(
             source_port: packet.source_port.clone(),
             destination_port: packet.destination_port.clone(),
             timeout: packet.timeout,
+            encoding: packet.encoding,
         };
         let source_chain_uid = packet.source_port.split('.').next().unwrap();
         let signed_data = sign_relay_messsage(
@@ -76,6 +80,96 @@ fn relay_factory_send_packet_inner(
         responses.extend(response.events);
     }
     Ok(responses)
+}
+
+/// Re-deliver a previously-relayed factory→router packet using a fresh
+/// relayer-level nonce so the relayer's own meta-tx nonce dedup does NOT
+/// fire. This lets a test exercise the router's contract-level dedup paths
+/// (`CROSS_CHAIN_PROCESSED_RECEIVED_PACKETS`, `TxAlreadyExist`) directly.
+///
+/// `relayer_nonce_suffix` is appended to the relayer nonce string to make
+/// it distinct from the original delivery. Returns the `Result` from
+/// `execute_meta_transaction` for the (single) duplicate packet, so the
+/// caller can assert on the contract-level error.
+pub fn redeliver_factory_send_packet(
+    events: Vec<Event>,
+    router: &RouterContract<MockBase>,
+    relayer_nonce_suffix: &str,
+) -> Result<Vec<Event>, CwEnvError> {
+    let send_packets = extract_send_packet_events(&events);
+    let packet = send_packets
+        .into_iter()
+        .next()
+        .expect("expected at least one send_packet event");
+
+    let relayer_address = router.query_relayer_addresses().unwrap().relayer_contract;
+    let relayer = get_relayer(router.environment(), &Addr::unchecked(relayer_address));
+
+    let call_data = euclid::msgs::router::ExecuteMsg::ReceivePacket {
+        msg: packet.msg,
+        sequence: packet.sequence,
+        source_port: packet.source_port.clone(),
+        destination_port: packet.destination_port.clone(),
+        timeout: packet.timeout,
+        encoding: 0,
+    };
+    let source_chain_uid = packet.source_port.split('.').next().unwrap();
+    let signed_data = sign_relay_messsage(
+        to_json_binary(&call_data).unwrap(),
+        router.address().unwrap(),
+        format!(
+            "{}-{}-{}-receive-{}",
+            packet.source_port, packet.destination_port, packet.sequence, relayer_nonce_suffix,
+        ),
+        &router.environment().app.borrow(),
+        source_chain_uid,
+    );
+
+    let response = relayer.execute_meta_transaction(signed_data)?;
+    Ok(response.events)
+}
+
+/// Mirror of `redeliver_factory_send_packet` for the router→factory direction:
+/// re-delivers an ack-bound packet to the factory with a fresh relayer-level
+/// nonce so the factory's contract-level state checks fire instead of the
+/// relayer's meta-tx dedup.
+pub fn redeliver_factory_ack_packet(
+    factory: &FactoryContract<MockBase>,
+    events: Vec<Event>,
+    chain_uid: &ChainUid,
+    relayer_nonce_suffix: &str,
+) -> Result<Vec<Event>, CwEnvError> {
+    let write_ack_packets = extract_ack_packet_events(&events);
+    let destination_port = format!("{}.{}", chain_uid.as_str(), factory.address().unwrap());
+    let packet = write_ack_packets
+        .into_iter()
+        .find(|p| p.destination_port == destination_port)
+        .expect("expected ack packet for factory");
+
+    let relayer_address = factory.get_state().unwrap().relayer_contract;
+    let relayer = get_relayer(factory.environment(), &Addr::unchecked(relayer_address));
+
+    let call_data = euclid::msgs::factory::ExecuteMsg::AcknowledgePacket {
+        source_port: packet.source_port.clone(),
+        destination_port: packet.destination_port.clone(),
+        msg: packet.msg,
+        sequence: packet.sequence,
+        ack: packet.ack,
+    };
+    let source_chain_uid = packet.source_port.split('.').next().unwrap();
+    let signed_data = sign_relay_messsage(
+        to_json_binary(&call_data).unwrap(),
+        factory.address().unwrap(),
+        format!(
+            "{}-{}-{}-ack-{}",
+            packet.source_port, packet.destination_port, packet.sequence, relayer_nonce_suffix,
+        ),
+        &factory.environment().app.borrow(),
+        source_chain_uid,
+    );
+
+    let response = relayer.execute_meta_transaction(signed_data)?;
+    Ok(response.events)
 }
 
 pub fn relay_router_send_packet(
@@ -116,6 +210,7 @@ pub fn relay_router_send_packet(
             source_port: packet.source_port.clone(),
             destination_port: packet.destination_port.clone(),
             timeout: packet.timeout,
+            encoding: packet.encoding,
         };
 
         let source_chain_uid = packet.source_port.split('.').next().unwrap();
@@ -155,7 +250,7 @@ pub fn relay_factory_ack_packet(
         println!("Packet sequence: {:?}", packet.sequence);
         println!("Source port: {:?}", packet.source_port);
         println!("Destination port: {:?}", packet.destination_port);
-        println!("Ack packet: {:?}", packet.ack.to_base64());
+        println!("Ack packet: {:?}", packet.ack);
 
         if packet.destination_port != destination_port {
             println!(
@@ -209,7 +304,7 @@ pub fn relay_router_ack_packet(
         println!("Packet sequence: {:?}", packet.sequence);
         println!("Source port: {:?}", packet.source_port);
         println!("Destination port: {:?}", packet.destination_port);
-        println!("Ack packet: {:?}", packet.ack.to_base64());
+        println!("Ack packet: {:?}", packet.ack);
         let call_data = euclid::msgs::router::ExecuteMsg::AcknowledgePacket {
             source_port: packet.source_port.clone(),
             destination_port: packet.destination_port.clone(),
@@ -249,7 +344,33 @@ pub fn ack_register_factory_evm(
         chain_id: chain_id.to_string(),
     });
 
-    let ack_binary = to_json_binary(&ack).unwrap();
+    // The EVM leg rides canonical ABI, so the ack (and the echoed original msg)
+    // must be ABI wire bytes; the router transcodes them back keyed by the send
+    // tag. Encoding a JSON ack here would fail the router's strict ABI decode.
+    let register_msg = FactoryReceiveMsg::RegisterFactory(RegisterFactorySendMsg {
+        chain_uid: chain_uid.clone(),
+        chain_type: RegisterFactoryChainType::Evm(RegisterFactoryChainEvm {
+            factory_address: factory_address.to_string(),
+            factory_chain_id: chain_id.to_string(),
+        }),
+        tx_id: tx_id.to_string(),
+    });
+    let wire_msg = register_msg.clone();
+    let tag = wire_msg.wire_tag();
+    let ack_wire = euclid_ibc::wire::transcode::factory_ack_json_to_wire(
+        tag,
+        to_json_binary(&ack).unwrap().as_slice(),
+        euclid_encoding::Encoding::Abi,
+    )
+    .unwrap();
+    let msg_wire = euclid_encoding::encode(&wire_msg, euclid_encoding::Encoding::Abi).unwrap();
+    // Abi leg entry point fields ride the 0x lowercase hex transport form.
+    let ack_string =
+        euclid_encoding::repr::to_transport_string(&ack_wire, euclid_encoding::Encoding::Abi)
+            .unwrap();
+    let msg_string =
+        euclid_encoding::repr::to_transport_string(&msg_wire, euclid_encoding::Encoding::Abi)
+            .unwrap();
 
     let relayer_address = router.query_relayer_addresses().unwrap().relayer_contract;
     let relayer = get_relayer(router.environment(), &Addr::unchecked(relayer_address));
@@ -260,17 +381,9 @@ pub fn ack_register_factory_evm(
     let call_data = euclid::msgs::router::ExecuteMsg::AcknowledgePacket {
         source_port: evm_port.clone(),
         destination_port: vsl_port.clone(),
-        msg: to_json_binary(&FactoryCrossChainExecuteMsg::RegisterFactory {
-            chain_uid: chain_uid.clone(),
-            chain_type: RegisterFactoryChainType::Evm(RegisterFactoryChainEvm {
-                factory_address: factory_address.to_string(),
-                factory_chain_id: chain_id.to_string(),
-            }),
-            tx_id: tx_id.to_string(),
-        })
-        .unwrap(),
+        msg: msg_string,
         sequence,
-        ack: ack_binary,
+        ack: ack_string,
     };
     let source_chain_uid = chain_uid.as_str();
     let signed_data = sign_relay_messsage(
@@ -392,17 +505,60 @@ pub fn sign_relay_messsage(
     }
 }
 
+/// Required attribute value from an event by key.
+fn get_event_attr<'a>(event: &'a Event, key: &str) -> &'a str {
+    event
+        .attributes
+        .iter()
+        .find(|attr| attr.key == key)
+        .unwrap_or_else(|| panic!("missing '{}' attribute in {} event", key, event.ty))
+        .value
+        .as_str()
+}
+
+/// A parsed send-packet event.
+///
+/// `msg` holds the event's `msg` attribute verbatim, in the transport
+/// representation for the leg encoding (raw JSON text when `encoding` is `0`,
+/// `0x` lowercase hex when `1`). Re-injection forwards it unchanged; recover
+/// bytes with `euclid_encoding::repr::from_transport_string` when needed.
 pub struct SendPacketEvent {
-    pub msg: Binary,
+    pub msg: String,
     pub sequence: u128,
     pub source_port: String,
     pub destination_port: String,
     pub timeout: u64,
+    pub encoding: u8,
+    pub version: String,
+}
+
+/// Recover the wire bytes carried by a send packet's transport `String`.
+fn send_packet_wire_bytes(packet: &SendPacketEvent) -> (Vec<u8>, euclid_encoding::Encoding) {
+    let encoding = euclid_encoding::Encoding::from_u8(packet.encoding).unwrap();
+    let bytes = euclid_encoding::repr::from_transport_string(&packet.msg, encoding)
+        .expect("send packet msg should be a valid transport string");
+    (bytes, encoding)
+}
+
+/// Decode a send packet's `msg` into the domain factory message, honoring the
+/// leg encoding recorded on the event (Json passthrough or Abi decode).
+pub fn decode_factory_receive_msg(packet: &SendPacketEvent) -> FactoryReceiveMsg {
+    let (bytes, encoding) = send_packet_wire_bytes(packet);
+    euclid_ibc::wire::transcode::decode_factory_receive(&bytes, encoding).unwrap()
+}
+
+/// Decode a send packet's `msg` into the domain router message, honoring the
+/// leg encoding recorded on the event (Json passthrough or Abi decode).
+pub fn decode_router_receive_msg(
+    packet: &SendPacketEvent,
+) -> euclid_ibc::wire::envelope::router::RouterReceiveMsg {
+    let (bytes, encoding) = send_packet_wire_bytes(packet);
+    euclid_ibc::wire::transcode::decode_router_receive(&bytes, encoding).unwrap()
 }
 pub fn extract_send_packet_events(events: &[Event]) -> Vec<SendPacketEvent> {
     let mut send_packet_events = vec![];
 
-    let send_packet_event_type = format!("wasm-{}", EUCLID_SEND_PACKET_EVENT);
+    let send_packet_event_type = format!("wasm-{}", EUCLID_SEND_PACKET_ENCODED_EVENT);
 
     let related_events = events
         .iter()
@@ -410,98 +566,72 @@ pub fn extract_send_packet_events(events: &[Event]) -> Vec<SendPacketEvent> {
         .collect::<Vec<_>>();
 
     for event in related_events {
-        let msg = event
-            .attributes
-            .iter()
-            .find(|attr| attr.key == "msg")
-            .unwrap();
-        let msg_binary = Binary::from_base64(msg.value.as_str()).unwrap();
-        let sequence = event
-            .attributes
-            .iter()
-            .find(|attr| attr.key == "sequence")
-            .unwrap();
-        let sequence = str::parse::<u128>(sequence.value.as_str()).unwrap();
-        let source_port = event
-            .attributes
-            .iter()
-            .find(|attr| attr.key == "source_port")
-            .unwrap();
-        let destination_port = event
-            .attributes
-            .iter()
-            .find(|attr| attr.key == "destination_port")
-            .unwrap();
-        let timeout = event
-            .attributes
-            .iter()
-            .find(|attr| attr.key == "timeout")
-            .unwrap();
-        let timeout = str::parse::<u64>(timeout.value.as_str()).unwrap();
+        let encoding = str::parse::<u8>(get_event_attr(event, "encoding")).unwrap();
+        let msg = get_event_attr(event, "msg").to_string();
+        let sequence = str::parse::<u128>(get_event_attr(event, "sequence")).unwrap();
+        let source_port = get_event_attr(event, "source_port").to_string();
+        let destination_port = get_event_attr(event, "destination_port").to_string();
+        let timeout = str::parse::<u64>(get_event_attr(event, "timeout")).unwrap();
+        let version = get_event_attr(event, "version").to_string();
         send_packet_events.push(SendPacketEvent {
-            msg: msg_binary,
+            msg,
             sequence,
-            source_port: source_port.value.clone(),
-            destination_port: destination_port.value.clone(),
+            source_port,
+            destination_port,
             timeout,
+            encoding,
+            version,
         });
     }
     send_packet_events
 }
 
+/// A parsed ack-packet event.
+///
+/// `msg` and `ack` hold the attribute values verbatim, in the transport
+/// representation for the leg encoding (see [`SendPacketEvent`]).
 pub struct AckPacketEvent {
-    pub msg: Binary,
-    pub ack: Binary,
+    pub msg: String,
+    pub ack: String,
     pub sequence: u128,
     pub source_port: String,
     pub destination_port: String,
+    pub encoding: u8,
+    pub ack_type: String,
 }
+/// Extract ack-packet events from a list of wasm events.
+///
+/// Each `euclid-write-acknowledgement-encoded` event is complete and self
+/// describing: it carries the ports (swapped, so `source_port` is the
+/// acknowledging contract's port), the wire `msg` and `ack` (raw JSON text on
+/// Json legs, 0x hex on Abi legs), `sequence`, `ack_type`, and `encoding`.
 pub fn extract_ack_packet_events(events: &[Event]) -> Vec<AckPacketEvent> {
     let mut ack_packet_events = vec![];
 
-    let ack_packet_event_type = format!("wasm-{}", EUCLID_WRITE_ACKNOWLEDGEMENT_EVENT);
+    let ack_packet_event_type = format!("wasm-{}", EUCLID_WRITE_ACKNOWLEDGEMENT_ENCODED_EVENT);
 
     let related_events = events
         .iter()
         .filter(|event| event.ty == ack_packet_event_type)
         .collect::<Vec<_>>();
 
-    for event in related_events.chunks(2) {
-        let msg = event[0]
-            .attributes
-            .iter()
-            .find(|attr| attr.key == "msg")
-            .unwrap();
-        let msg_binary = Binary::from_base64(msg.value.as_str()).unwrap();
+    for event in related_events {
+        let encoding = str::parse::<u8>(get_event_attr(event, "encoding")).unwrap();
+        let msg = get_event_attr(event, "msg").to_string();
+        let ack = get_event_attr(event, "ack").to_string();
+        let sequence = str::parse::<u128>(get_event_attr(event, "sequence")).unwrap();
+        let source_port = get_event_attr(event, "source_port").to_string();
+        let destination_port = get_event_attr(event, "destination_port").to_string();
+        let ack_type = get_event_attr(event, "ack_type").to_string();
 
-        let ack = event[1]
-            .attributes
-            .iter()
-            .find(|attr| attr.key == "ack")
-            .unwrap();
-        let ack_binary = Binary::from_base64(ack.value.as_str()).unwrap();
-        let sequence = event[0]
-            .attributes
-            .iter()
-            .find(|attr| attr.key == "sequence")
-            .unwrap();
-        let sequence = str::parse::<u128>(sequence.value.as_str()).unwrap();
-        let source_port = event[0]
-            .attributes
-            .iter()
-            .find(|attr| attr.key == "source_port")
-            .unwrap();
-        let destination_port = event[0]
-            .attributes
-            .iter()
-            .find(|attr| attr.key == "destination_port")
-            .unwrap();
         ack_packet_events.push(AckPacketEvent {
-            msg: msg_binary,
-            ack: ack_binary,
+            msg,
+            ack,
             sequence,
-            source_port: source_port.value.clone(),
-            destination_port: destination_port.value.clone(),
+            source_port,
+            destination_port,
+            encoding,
+            ack_type,
         });
     }
     ack_packet_events
