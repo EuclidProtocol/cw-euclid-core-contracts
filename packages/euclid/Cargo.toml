@@ -1,9 +1,10 @@
 [package]
 name = "euclid"
-version = "0.2.1"
+version = "0.2.2"
 authors = [
     "gachouchani1999 <georgeschouchani1@gmail.com>",
     "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",
+    "Joe Monem <jmonem@icloud.com>",
 ]
 edition = "2021"
 
@@ -11,6 +12,8 @@ edition = "2021"
 [features]
 # use library feature to disable all instantiate/execute/query exports
 library = []
+cross-vm = ["dep:cross-vm-cosmwasm", "dep:cross-vm-macros"]
+
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [lib]
@@ -30,7 +33,14 @@ cw20-base = { workspace = true, features = ["library"] }
 cw-asset = "=4.0.0"
 cw-orch = { workspace = true }
 
+# We don't need this if targetting wasm32
+cross-vm-macros = { workspace = true, optional = true }
+cross-vm-cosmwasm = { workspace = true, optional = true }
+
 syn = "1.0"
 quote = "1.0"
 proc-macro2 = "1.0"
 anyhow = "1.0.79"
+
+[dev-dependencies]
+rstest = "0.19.0"

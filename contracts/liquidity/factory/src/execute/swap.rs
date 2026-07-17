@@ -1,16 +1,17 @@
-use cosmwasm_std::{ensure, Decimal, DepsMut, Env, MessageInfo, Response, Uint128};
+use cosmwasm_std::{ensure, Decimal, DepsMut, Env, MessageInfo, Response, Uint256};
 use euclid::{
     cross_chain_user::CrossChainUser,
     error::ContractError,
     events::{simple_event, swap_event, tx_event},
     fee::{PartnerFee, MAX_PARTNER_FEE_BPS},
     msgs::cross_chain_config::CrossChainConfig,
+    msgs::vlp::base::PoolType,
     recipient::Recipient,
     swap::{NextSwapPair, SwapRequest},
-    token::{Token, TokenType, TokenWithDenom},
+    token::{Pair, Token, TokenType, TokenWithDenom},
     utils::{fund_manager::FundManager, tx::generate_tx},
 };
-use euclid_ibc::router_ibc::{RouterCrossChainExecuteMsg, RouterCrossChainSwapExecuteMsg};
+use euclid_ibc::wire::{envelope::router::RouterReceiveMsg, msgs::SwapSendMsg};
 
 use crate::{
     query::get_chain_type,
@@ -23,9 +24,10 @@ pub fn execute_swap_request(
     info: MessageInfo,
     sender: CrossChainUser,
     asset_in: TokenWithDenom,
-    amount_in: Uint128,
+    amount_in: Uint256,
     asset_out: Token,
-    min_amount_out: Uint128,
+    // min_amount_out must be in 24-decimal voucher units, not native token decimals
+    min_amount_out: Uint256,
     swaps: Vec<NextSwapPair>,
     recipients: Vec<Recipient>,
     cross_chain_config: CrossChainConfig,
@@ -71,11 +73,13 @@ pub fn execute_swap_request(
 
     let mut fund_manager = FundManager::new(&info.funds);
     match &asset_in.token_type {
-        TokenType::Native { denom } => {
+        TokenType::Native { denom, .. } => {
             // Verify thatthe amount of funds passed is greater than the asset amount
             fund_manager.use_fund(amount_in, denom)?;
         }
-        TokenType::Smart { contract_address } => {
+        TokenType::Smart {
+            contract_address, ..
+        } => {
             ensure!(
                 info.sender.to_string() == *contract_address,
                 ContractError::Unauthorized {}
@@ -120,6 +124,20 @@ pub fn execute_swap_request(
         ContractError::new("Token out doesn't match swap route")
     );
 
+    for swap in &swaps {
+        if let Some(pool_key) = &swap.pool_key {
+            ensure!(
+                matches!(pool_key.pool_type, PoolType::Concentrated { .. }),
+                ContractError::new("swap hop pool_key must be concentrated")
+            );
+            let hop_pair = Pair::new(swap.token_in.clone(), swap.token_out.clone())?;
+            ensure!(
+                hop_pair.get_tupple() == pool_key.pair.get_tupple(),
+                ContractError::new("swap hop tokens do not match pool_key pair")
+            );
+        }
+    }
+
     let partner_fee_recipient = partner_fee
         .clone()
         .map(|partner_fee| deps.api.addr_validate(&partner_fee.recipient))
@@ -146,7 +164,10 @@ pub fn execute_swap_request(
 
     let chain_type = get_chain_type(deps.as_ref(), &env)?;
 
-    let swap_msg = RouterCrossChainExecuteMsg::Swap(RouterCrossChainSwapExecuteMsg {
+    let asset_in_id = asset_in.token.to_string();
+    let asset_out_id = asset_out.to_string();
+
+    let swap_msg = RouterReceiveMsg::Swap(SwapSendMsg {
         sender,
         asset_in,
         amount_in,
@@ -183,7 +204,437 @@ pub fn execute_swap_request(
             "meta",
             cross_chain_config.meta.unwrap_or("no_meta".to_string()),
         ))
+        .add_attribute("action", "swap")
         .add_attribute("tx_id", tx_id)
         .add_attribute("method", "execute_request_swap")
+        .add_attribute("asset_in", asset_in_id)
+        .add_attribute("asset_out", asset_out_id)
+        .add_attribute("amount_in", amount_in)
         .add_submessage(swap_msg))
+}
+
+#[cfg(test)]
+mod tests {
+    use cosmwasm_std::{
+        testing::{message_info, mock_dependencies, mock_env},
+        Uint256,
+    };
+    use euclid::{
+        error::ContractError,
+        msgs::factory::{ExecuteMsg, ExecuteSwapRequest},
+        msgs::vlp::base::{PoolKey, PoolType},
+        swap::NextSwapPair,
+        token::{Pair, Token, TokenType, TokenWithDenom},
+    };
+
+    use crate::{
+        contract::execute,
+        testing::helpers::{
+            assert_attribute, assert_euclid_action, assert_tx_event_full,
+            default_cross_chain_config, get_attribute, init, seed_escrow, set_escrow_token_allowed,
+        },
+    };
+
+    fn make_voucher_swap_msg(amount_in: Uint256, min_amount_out: Uint256) -> ExecuteMsg {
+        let token_in = Token::create("usdc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+
+        ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: token_in.clone(),
+                token_type: TokenType::Voucher {},
+            },
+            amount_in,
+            asset_out: token_out.clone(),
+            min_amount_out,
+            swaps: vec![NextSwapPair {
+                token_in: token_in.clone(),
+                token_out: token_out.clone(),
+                pool_key: None,
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        })
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ExecuteSwapRequest
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_swap_request_zero_min_amount_out_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+        let msg = make_voucher_swap_msg(Uint256::from(100u128), Uint256::zero());
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::ZeroAssetAmount {});
+    }
+
+    #[test]
+    fn test_swap_request_empty_swaps_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+        let msg = ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: Token::create("usdc".to_string()).unwrap(),
+                token_type: TokenType::Voucher {},
+            },
+            amount_in: Uint256::from(100u128),
+            asset_out: Token::create("eth".to_string()).unwrap(),
+            min_amount_out: Uint256::from(1u128),
+            swaps: vec![],
+            recipients: vec![],
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert!(matches!(res.unwrap_err(), ContractError::Generic { .. }));
+    }
+
+    #[test]
+    fn test_swap_request_mismatched_token_in_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+
+        let asset_in_token = Token::create("usdc".to_string()).unwrap();
+        let wrong_token_in = Token::create("wbtc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+
+        let msg = ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: asset_in_token.clone(),
+                token_type: TokenType::Voucher {},
+            },
+            amount_in: Uint256::from(100u128),
+            asset_out: token_out.clone(),
+            min_amount_out: Uint256::from(1u128),
+            swaps: vec![NextSwapPair {
+                token_in: wrong_token_in,
+                token_out: token_out.clone(),
+                pool_key: None,
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert!(matches!(res.unwrap_err(), ContractError::Generic { .. }));
+    }
+
+    #[test]
+    fn test_swap_request_mismatched_token_out_fails() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+
+        let asset_in_token = Token::create("usdc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+        let wrong_token_out = Token::create("wbtc".to_string()).unwrap();
+
+        let msg = ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: asset_in_token.clone(),
+                token_type: TokenType::Voucher {},
+            },
+            amount_in: Uint256::from(100u128),
+            asset_out: token_out.clone(),
+            min_amount_out: Uint256::from(1u128),
+            swaps: vec![NextSwapPair {
+                token_in: asset_in_token.clone(),
+                token_out: wrong_token_out,
+                pool_key: None,
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert!(matches!(res.unwrap_err(), ContractError::Generic { .. }));
+    }
+
+    #[test]
+    fn test_swap_request_voucher_happy_path_writes_pending() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let token_in = Token::create("usdc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+        let amount_in = Uint256::from(100u128);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+        let msg = make_voucher_swap_msg(amount_in, Uint256::from(1u128));
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        assert!(res
+            .attributes
+            .iter()
+            .any(|a| a.key == "method" && a.value == "execute_request_swap"));
+
+        let tx_id = get_attribute(&res, "tx_id").to_owned();
+
+        let pending = crate::state::PENDING_SWAPS
+            .load(&deps.storage, (sender.clone(), tx_id.clone()))
+            .unwrap();
+        assert_eq!(pending.tx_id, tx_id);
+        assert_eq!(pending.amount_in, amount_in);
+
+        assert_attribute(&res, "action", "swap");
+        assert_eq!(get_attribute(&res, "asset_in"), token_in.to_string());
+        assert_eq!(get_attribute(&res, "asset_out"), token_out.to_string());
+        assert_eq!(get_attribute(&res, "amount_in"), amount_in.to_string());
+        assert_eq!(get_attribute(&res, "tx_id"), tx_id);
+        assert_tx_event_full(&res, "swap", &tx_id, sender.as_str());
+        assert_euclid_action(&res, "swap");
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ExecuteSwapRequest – concentrated pool_key not registered
+    //
+    // The factory previously required every concentrated hop pool_key to
+    // exist in POOL_KEY_TO_VLP, rejecting voucher/cross-chain swaps whose
+    // pool lives on another chain. This test locks in the removal of that
+    // gate: the swap must be accepted even when no registration exists.
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_swap_request_concentrated_pool_key_not_registered_succeeds() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let token_in = Token::create("usdc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+        let pair = Pair::new(token_in.clone(), token_out.clone()).unwrap();
+        let pool_key = PoolKey {
+            pair: pair.clone(),
+            pool_type: PoolType::Concentrated {
+                fee_tier_bps: 500,
+                tick_spacing: 10,
+            },
+        };
+
+        assert!(
+            !crate::state::POOL_KEY_TO_VLP.has(&deps.storage, pool_key.to_map_key()),
+            "precondition: pool_key must not be registered"
+        );
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+        let amount_in = Uint256::from(100u128);
+
+        let msg = ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: token_in.clone(),
+                token_type: TokenType::Voucher {},
+            },
+            amount_in,
+            asset_out: token_out.clone(),
+            min_amount_out: Uint256::from(1u128),
+            swaps: vec![NextSwapPair {
+                token_in: token_in.clone(),
+                token_out: token_out.clone(),
+                pool_key: Some(pool_key.clone()),
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        });
+
+        let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+        let tx_id = get_attribute(&res, "tx_id").to_owned();
+        let pending = crate::state::PENDING_SWAPS
+            .load(&deps.storage, (sender.clone(), tx_id.clone()))
+            .unwrap();
+        assert_eq!(pending.tx_id, tx_id);
+        assert_eq!(pending.amount_in, amount_in);
+        assert_eq!(pending.swaps.len(), 1);
+        let stored_pool_key = pending.swaps[0]
+            .pool_key
+            .as_ref()
+            .expect("pool_key should be preserved on the pending swap");
+        assert_eq!(*stored_pool_key, pool_key);
+
+        assert_attribute(&res, "action", "swap");
+        assert_tx_event_full(&res, "swap", &tx_id, sender.as_str());
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ExecuteSwapRequest – partner fee validation
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_swap_request_partner_fee_too_high_fails() {
+        use euclid::fee::PartnerFee;
+
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+
+        let token_in = Token::create("usdc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+
+        let msg = ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: token_in.clone(),
+                token_type: TokenType::Voucher {},
+            },
+            amount_in: Uint256::from(100u128),
+            asset_out: token_out.clone(),
+            min_amount_out: Uint256::from(1u128),
+            swaps: vec![NextSwapPair {
+                token_in: token_in.clone(),
+                token_out: token_out.clone(),
+                pool_key: None,
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee: Some(PartnerFee {
+                partner_fee_bps: 10_001,
+                recipient: sender.to_string(),
+            }),
+            cross_chain_config: default_cross_chain_config(),
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::InvalidPartnerFee {});
+    }
+
+    // -----------------------------------------------------------------------
+    // Execute: ExecuteSwapRequest – native token requires funds
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_swap_request_native_token_requires_funds() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        seed_escrow(&mut deps, "usdc", "escrow_usdc");
+        set_escrow_token_allowed(&mut deps, true);
+        deps.querier
+            .bank
+            .update_balance("any", vec![cosmwasm_std::coin(1_000_000, "uusdc")]);
+
+        let sender = deps.api.addr_make("sender");
+        let info = message_info(&sender, &[]);
+
+        let token_in = Token::create("usdc".to_string()).unwrap();
+        let token_out = Token::create("eth".to_string()).unwrap();
+
+        let msg = ExecuteMsg::ExecuteSwapRequest(ExecuteSwapRequest {
+            asset_in: TokenWithDenom {
+                token: token_in.clone(),
+                token_type: TokenType::Native {
+                    denom: "uusdc".to_string(),
+                    decimals: None,
+                },
+            },
+            amount_in: Uint256::from(100u128),
+            asset_out: token_out.clone(),
+            min_amount_out: Uint256::from(1u128),
+            swaps: vec![NextSwapPair {
+                token_in: token_in.clone(),
+                token_out: token_out.clone(),
+                pool_key: None,
+                test_fail: None,
+            }],
+            recipients: vec![],
+            partner_fee: None,
+            cross_chain_config: default_cross_chain_config(),
+        });
+        let res = execute(deps.as_mut(), mock_env(), info, msg);
+        assert_eq!(res.unwrap_err(), ContractError::InsufficientFunds {});
+    }
+
+    // -----------------------------------------------------------------------
+    // State invariant: PENDING_SWAPS accumulates across two different senders
+    // -----------------------------------------------------------------------
+
+    // Reorg-replay safety: if the per-sender nonce somehow rewinds (e.g. the
+    // PENDING_* purge during ack ran but the nonce write was rolled back by a
+    // later reorg), the application-layer `PENDING_SWAPS.has(...)` guard must
+    // still reject a second submission with the same `tx_id`. Simulated here
+    // by running a successful swap, rewinding `TX_NONCES` to zero, and
+    // submitting the same swap again — the regenerated tx_id collides.
+    #[test]
+    fn test_swap_request_duplicate_tx_id_rejected() {
+        use euclid::utils::tx::TX_NONCES;
+
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let sender = deps.api.addr_make("sender");
+
+        // First call succeeds and persists PENDING_SWAPS.
+        let first = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&sender, &[]),
+            make_voucher_swap_msg(Uint256::from(100u128), Uint256::from(1u128)),
+        )
+        .unwrap();
+        let first_tx_id = get_attribute(&first, "tx_id").to_owned();
+        let sender_key = format!("testchain:{sender}");
+
+        // Rewind the per-sender nonce so the next call regenerates the same tx_id.
+        TX_NONCES
+            .save(deps.as_mut().storage, sender_key, &0u128)
+            .unwrap();
+
+        let err = execute(
+            deps.as_mut(),
+            mock_env(),
+            message_info(&sender, &[]),
+            make_voucher_swap_msg(Uint256::from(100u128), Uint256::from(1u128)),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            ContractError::TxAlreadyExist {},
+            "second call should fail with TxAlreadyExist for tx_id {first_tx_id}"
+        );
+    }
+
+    #[test]
+    fn test_pending_swaps_accumulated_across_two_different_senders() {
+        let mut deps = mock_dependencies();
+        init(&mut deps);
+
+        let alice = deps.api.addr_make("alice");
+        let bob = deps.api.addr_make("bob");
+
+        for sender_addr in [alice.clone(), bob.clone()] {
+            let info = message_info(&sender_addr, &[]);
+            let msg = make_voucher_swap_msg(Uint256::from(100u128), Uint256::from(1u128));
+            let res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+            let tx_id = res
+                .attributes
+                .iter()
+                .find(|a| a.key == "tx_id")
+                .unwrap()
+                .value
+                .clone();
+            let pending = crate::state::PENDING_SWAPS
+                .load(&deps.storage, (sender_addr, tx_id))
+                .unwrap();
+            assert_eq!(pending.amount_in, Uint256::from(100u128));
+        }
+    }
 }

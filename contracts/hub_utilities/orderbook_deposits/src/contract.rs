@@ -51,6 +51,7 @@ pub fn instantiate(
     };
     ROOT_CONFIG.save(deps.storage, &root_config)?;
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    euclid::build_info::set_build_info(deps.storage)?;
 
     Ok(Response::new().add_attributes(vec![
         attr("action", "instantiate"),

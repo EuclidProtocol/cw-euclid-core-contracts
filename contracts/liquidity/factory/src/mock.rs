@@ -1,7 +1,7 @@
 #![cfg(not(target_arch = "wasm32"))]
 
 use crate::contract::{execute, instantiate, query, reply};
-use cosmwasm_std::{Addr, Empty, Uint128};
+use cosmwasm_std::{Addr, Empty, Uint256};
 use cw_multi_test::{Contract, ContractWrapper, Executor};
 
 use euclid::{
@@ -26,17 +26,19 @@ impl MockFactory {
         chain_uid: ChainUid,
         escrow_code_id: u64,
         lp_code_id: u64,
+        position_token_code_id: u64,
         is_native: bool,
         relayer_contract: Addr,
         rate_limit_fee_recipient: Addr,
         rate_limit_fee_denom: String,
-        rate_limit_free_limit: Uint128,
+        rate_limit_free_limit: Uint256,
     ) -> Self {
         let msg = mock_factory_instantiate_msg(
             router_contract,
             chain_uid,
             escrow_code_id,
             lp_code_id,
+            position_token_code_id,
             is_native,
             relayer_contract,
             rate_limit_fee_recipient,
@@ -83,17 +85,19 @@ pub fn mock_factory_instantiate_msg(
     chain_uid: ChainUid,
     escrow_code_id: u64,
     lp_code_id: u64,
+    position_token_code_id: u64,
     is_native: bool,
     relayer_contract: Addr,
     rate_limit_fee_recipient: Addr,
     rate_limit_fee_denom: String,
-    rate_limit_free_limit: Uint128,
+    rate_limit_free_limit: Uint256,
 ) -> InstantiateMsg {
     InstantiateMsg {
         router_contract,
         chain_uid,
         escrow_code_id,
         lp_code_id,
+        position_token_code_id,
         is_native,
         relayer_contract,
         rate_limit_fee_recipient,

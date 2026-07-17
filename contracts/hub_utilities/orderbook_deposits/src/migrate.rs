@@ -33,6 +33,7 @@ pub fn migrate(deps: DepsMut, _env: Env, _msg: MigrateMsg) -> Result<Response, C
     };
 
     set_contract_version(deps.storage, CONTRACT_NAME, CONTRACT_VERSION)?;
+    euclid::build_info::set_build_info(deps.storage)?;
     Ok(Response::new()
         .add_attribute("method", "migrate")
         .add_attribute("admins_migrated", migrated.to_string()))

@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{to_json_binary, to_json_string, Addr, Binary, HexBinary, Uint128};
+use cosmwasm_std::{to_json_binary, to_json_string, Addr, Binary, HexBinary, Uint128, Uint256};
 use cw_orch::{
     mock::{cw_multi_test::App, MockBase},
     prelude::{
@@ -27,14 +27,15 @@ use euclid::{
         virtual_balance::QueryMsgFns as VirtualBalanceQueryMsgFns,
         vlp::base::PoolConfig,
     },
+    normalize::normalize_token_to_voucher,
     recipient::Recipient,
     swap::NextSwapPair,
     token::{PairWithDenomAndAmount, Token, TokenType, TokenWithDenom},
     voucher::BalanceKey,
 };
-use euclid_ibc::router_ibc::{
-    RouterCrossChainExecuteMsg, RouterCrossChainSwapExecuteMsg,
-    RouterCrossChainTransferVoucherExecuteMsg,
+use euclid_ibc::wire::{
+    envelope::router::RouterReceiveMsg,
+    msgs::{SwapSendMsg, TransferVoucherSendMsg},
 };
 use factory::FactoryContract;
 use k256::ecdsa::SigningKey;
@@ -346,6 +347,7 @@ fn test_execute_meta_transaction_withdraw_voucher() {
         token: Token::create("token.a".to_string()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: token_denom.to_string(),
+            decimals: Some(18),
         },
     };
 
@@ -354,10 +356,10 @@ fn test_execute_meta_transaction_withdraw_voucher() {
         &factory_contract,
         &router_contract,
         token_a.clone(),
-        Uint128::from(1000u128),
+        Uint256::from(1000u128),
         vec![Recipient::default_voucher_recipient(
             user.clone(),
-            Limit::Dynamic(Uint128::zero()),
+            Limit::Dynamic(Uint256::zero()),
         )],
     )
     .unwrap();
@@ -382,25 +384,32 @@ fn test_execute_meta_transaction_withdraw_voucher() {
 
     assert_eq!(
         user_virtual_balance.amount,
-        Uint128::from(1000u128),
+        normalize_token_to_voucher(
+            Uint256::from(1000_u128),
+            token_a.token_type.get_decimals().unwrap()
+        )
+        .unwrap(),
         "User virtual balance should be amount of tokens deposited before meta withdraw"
     );
 
-    let unauthorized_withdraw =
-        RouterCrossChainExecuteMsg::TransferVoucher(RouterCrossChainTransferVoucherExecuteMsg {
-            sender: user.clone(),
-            tx_id: "".to_string(),
-            token: token_a.token.clone(),
-            amount: Uint128::from(1000u128),
-            from: None,
-            recipients: vec![Recipient {
-                recipient: unauthorized_user.clone(),
-                amount: Limit::Dynamic(Uint128::zero()),
-                denom: token_a.token_type.clone(),
-                forwarding_message: None,
-                unsafe_refund_as_voucher: None,
-            }],
-        });
+    let unauthorized_withdraw = RouterReceiveMsg::TransferVoucher(TransferVoucherSendMsg {
+        sender: user.clone(),
+        tx_id: "".to_string(),
+        token: token_a.token.clone(),
+        amount: normalize_token_to_voucher(
+            Uint256::from(1000_u128),
+            token_a.token_type.get_decimals().unwrap(),
+        )
+        .unwrap(),
+        from: None,
+        recipients: vec![Recipient {
+            recipient: unauthorized_user.clone(),
+            amount: Limit::Dynamic(Uint256::zero()),
+            denom: token_a.token_type.clone(),
+            forwarding_message: None,
+            unsafe_refund_as_voucher: None,
+        }],
+    });
     let unauthorized_withdraw_call_data = MetaTransactionCallData {
         target: router_contract.address().unwrap(),
         call_data: to_json_string(&unauthorized_withdraw).unwrap(),
@@ -426,21 +435,24 @@ fn test_execute_meta_transaction_withdraw_voucher() {
     );
 
     // Lets try to withdraw vouchers through a meta transaction
-    let withdraw_voucher_msg =
-        RouterCrossChainExecuteMsg::TransferVoucher(RouterCrossChainTransferVoucherExecuteMsg {
-            sender: user.clone(),
-            tx_id: "".to_string(),
-            token: token_a.token.clone(),
-            amount: Uint128::from(1000u128),
-            from: None,
-            recipients: vec![Recipient {
-                recipient: user.clone(),
-                amount: Limit::Dynamic(Uint128::zero()),
-                denom: token_a.token_type.clone(),
-                forwarding_message: None,
-                unsafe_refund_as_voucher: None,
-            }],
-        });
+    let withdraw_voucher_msg = RouterReceiveMsg::TransferVoucher(TransferVoucherSendMsg {
+        sender: user.clone(),
+        tx_id: "".to_string(),
+        token: token_a.token.clone(),
+        amount: normalize_token_to_voucher(
+            Uint256::from(1000_u128),
+            token_a.token_type.get_decimals().unwrap(),
+        )
+        .unwrap(),
+        from: None,
+        recipients: vec![Recipient {
+            recipient: user.clone(),
+            amount: Limit::Dynamic(Uint256::zero()),
+            denom: token_a.token_type.clone(),
+            forwarding_message: None,
+            unsafe_refund_as_voucher: None,
+        }],
+    });
     let withdraw_call_data = MetaTransactionCallData {
         target: router_contract.address().unwrap(),
         call_data: to_json_string(&withdraw_voucher_msg).unwrap(),
@@ -491,7 +503,7 @@ fn test_execute_meta_transaction_withdraw_voucher() {
 
     assert_eq!(
         user_virtual_balance.amount,
-        Uint128::zero(),
+        Uint256::zero(),
         "User virtual balance should be zero after meta withdraw"
     );
 }
@@ -529,6 +541,7 @@ fn test_execute_meta_transaction_transfer_voucher() {
         token: Token::create("token.a".to_string()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: token_denom.to_string(),
+            decimals: Some(18),
         },
     };
 
@@ -537,10 +550,10 @@ fn test_execute_meta_transaction_transfer_voucher() {
         &factory_contract,
         &router_contract,
         token_a.clone(),
-        Uint128::from(1000u128),
+        Uint256::from(1000u128),
         vec![Recipient {
             recipient: user.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: TokenType::Voucher {},
             forwarding_message: None,
             unsafe_refund_as_voucher: None,
@@ -568,25 +581,32 @@ fn test_execute_meta_transaction_transfer_voucher() {
 
     assert_eq!(
         user_virtual_balance.amount,
-        Uint128::from(1000u128),
+        normalize_token_to_voucher(
+            Uint256::from(1000_u128),
+            token_a.token_type.get_decimals().unwrap()
+        )
+        .unwrap(),
         "User virtual balance should be amount of tokens deposited before meta withdraw"
     );
 
-    let unauthorized_transfer =
-        RouterCrossChainExecuteMsg::TransferVoucher(RouterCrossChainTransferVoucherExecuteMsg {
-            sender: user.clone(),
-            tx_id: "".to_string(),
-            token: token_a.token.clone(),
-            amount: Uint128::from(1000u128),
-            from: None,
-            recipients: vec![Recipient {
-                recipient: unauthorized_user.clone(),
-                amount: Limit::Dynamic(Uint128::zero()),
-                denom: token_a.token_type.clone(),
-                forwarding_message: None,
-                unsafe_refund_as_voucher: None,
-            }],
-        });
+    let unauthorized_transfer = RouterReceiveMsg::TransferVoucher(TransferVoucherSendMsg {
+        sender: user.clone(),
+        tx_id: "".to_string(),
+        token: token_a.token.clone(),
+        amount: normalize_token_to_voucher(
+            Uint256::from(1000_u128),
+            token_a.token_type.get_decimals().unwrap(),
+        )
+        .unwrap(),
+        from: None,
+        recipients: vec![Recipient {
+            recipient: unauthorized_user.clone(),
+            amount: Limit::Dynamic(Uint256::zero()),
+            denom: token_a.token_type.clone(),
+            forwarding_message: None,
+            unsafe_refund_as_voucher: None,
+        }],
+    });
     let unauthorized_transfer_call_data = MetaTransactionCallData {
         target: router_contract.address().unwrap(),
         call_data: to_json_string(&unauthorized_transfer).unwrap(),
@@ -616,21 +636,24 @@ fn test_execute_meta_transaction_transfer_voucher() {
         factory_chain.addr_make("recipient_user").to_string(),
     );
     // Lets try to withdraw vouchers through a meta transaction
-    let transfer_voucher_msg =
-        RouterCrossChainExecuteMsg::TransferVoucher(RouterCrossChainTransferVoucherExecuteMsg {
-            sender: user.clone(),
-            tx_id: "".to_string(),
-            token: token_a.token.clone(),
-            amount: Uint128::from(1000u128),
-            from: None,
-            recipients: vec![Recipient {
-                recipient: recipient_user.clone(),
-                amount: Limit::Dynamic(Uint128::zero()),
-                denom: TokenType::Voucher {},
-                forwarding_message: None,
-                unsafe_refund_as_voucher: None,
-            }],
-        });
+    let transfer_voucher_msg = RouterReceiveMsg::TransferVoucher(TransferVoucherSendMsg {
+        sender: user.clone(),
+        tx_id: "".to_string(),
+        token: token_a.token.clone(),
+        amount: normalize_token_to_voucher(
+            Uint256::from(1000_u128),
+            token_a.token_type.get_decimals().unwrap(),
+        )
+        .unwrap(),
+        from: None,
+        recipients: vec![Recipient {
+            recipient: recipient_user.clone(),
+            amount: Limit::Dynamic(Uint256::zero()),
+            denom: TokenType::Voucher {},
+            forwarding_message: None,
+            unsafe_refund_as_voucher: None,
+        }],
+    });
     let transfer_call_data = MetaTransactionCallData {
         target: router_contract.address().unwrap(),
         call_data: to_json_string(&transfer_voucher_msg).unwrap(),
@@ -673,7 +696,7 @@ fn test_execute_meta_transaction_transfer_voucher() {
 
     assert_eq!(
         user_virtual_balance.amount,
-        Uint128::zero(),
+        Uint256::zero(),
         "User virtual balance should be zero after meta withdraw"
     );
 
@@ -686,7 +709,11 @@ fn test_execute_meta_transaction_transfer_voucher() {
 
     assert_eq!(
         recipient_virtual_balance.amount,
-        Uint128::from(1000u128),
+        normalize_token_to_voucher(
+            Uint256::from(1000_u128),
+            token_a.token_type.get_decimals().unwrap()
+        )
+        .unwrap(),
         "Recipient virtual balance should be amount of tokens transferred after meta transfer"
     );
 }
@@ -742,6 +769,7 @@ fn test_execute_meta_transaction_transfer_voucher_evm() {
         token: Token::create("token.a".to_string()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: token_denom.to_string(),
+            decimals: Some(18),
         },
     };
 
@@ -752,10 +780,10 @@ fn test_execute_meta_transaction_transfer_voucher_evm() {
         &cosmos_factory_contract,
         &router_contract,
         token_a.clone(),
-        Uint128::from(1000u128),
+        Uint256::from(1000u128),
         vec![Recipient {
             recipient: evm_user.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: TokenType::Voucher {},
             forwarding_message: None,
             unsafe_refund_as_voucher: None,
@@ -776,25 +804,32 @@ fn test_execute_meta_transaction_transfer_voucher_evm() {
     println!("EVM user address: {}", evm_user.address);
     assert_eq!(
         evm_user_virtual_balance.amount,
-        Uint128::from(1000u128),
+        normalize_token_to_voucher(
+            Uint256::from(1000_u128),
+            token_a.token_type.get_decimals().unwrap()
+        )
+        .unwrap(),
         "User virtual balance should be amount of tokens deposited before meta withdraw"
     );
 
-    let unauthorized_transfer =
-        RouterCrossChainExecuteMsg::TransferVoucher(RouterCrossChainTransferVoucherExecuteMsg {
-            sender: evm_user.clone(),
-            token: token_a.token.clone(),
-            amount: Uint128::from(1000u128),
-            from: None,
-            recipients: vec![Recipient {
-                recipient: unauthorized_user.clone(),
-                amount: Limit::Dynamic(Uint128::zero()),
-                denom: TokenType::Voucher {},
-                forwarding_message: None,
-                unsafe_refund_as_voucher: None,
-            }],
-            tx_id: "".to_string(),
-        });
+    let unauthorized_transfer = RouterReceiveMsg::TransferVoucher(TransferVoucherSendMsg {
+        sender: evm_user.clone(),
+        token: token_a.token.clone(),
+        amount: normalize_token_to_voucher(
+            Uint256::from(1000_u128),
+            token_a.token_type.get_decimals().unwrap(),
+        )
+        .unwrap(),
+        from: None,
+        recipients: vec![Recipient {
+            recipient: unauthorized_user.clone(),
+            amount: Limit::Dynamic(Uint256::zero()),
+            denom: TokenType::Voucher {},
+            forwarding_message: None,
+            unsafe_refund_as_voucher: None,
+        }],
+        tx_id: "".to_string(),
+    });
     let unauthorized_transfer_call_data = MetaTransactionCallData {
         target: router_contract.address().unwrap(),
         call_data: to_json_string(&unauthorized_transfer).unwrap(),
@@ -828,21 +863,24 @@ fn test_execute_meta_transaction_transfer_voucher_evm() {
         factory_chain_cosmos.addr_make("recipient_user").to_string(),
     );
     // Lets try to withdraw vouchers through a meta transaction
-    let transfer_voucher_msg =
-        RouterCrossChainExecuteMsg::TransferVoucher(RouterCrossChainTransferVoucherExecuteMsg {
-            sender: evm_user.clone(),
-            tx_id: "".to_string(),
-            token: token_a.token.clone(),
-            amount: Uint128::from(1000u128),
-            recipients: vec![Recipient {
-                recipient: recipient_user.clone(),
-                amount: Limit::Dynamic(Uint128::zero()),
-                denom: TokenType::Voucher {},
-                forwarding_message: None,
-                unsafe_refund_as_voucher: None,
-            }],
-            from: None,
-        });
+    let transfer_voucher_msg = RouterReceiveMsg::TransferVoucher(TransferVoucherSendMsg {
+        sender: evm_user.clone(),
+        tx_id: "".to_string(),
+        token: token_a.token.clone(),
+        amount: normalize_token_to_voucher(
+            Uint256::from(1000_u128),
+            token_a.token_type.get_decimals().unwrap(),
+        )
+        .unwrap(),
+        recipients: vec![Recipient {
+            recipient: recipient_user.clone(),
+            amount: Limit::Dynamic(Uint256::zero()),
+            denom: TokenType::Voucher {},
+            forwarding_message: None,
+            unsafe_refund_as_voucher: None,
+        }],
+        from: None,
+    });
     let transfer_call_data = MetaTransactionCallData {
         target: router_contract.address().unwrap(),
         call_data: to_json_string(&transfer_voucher_msg).unwrap(),
@@ -888,7 +926,7 @@ fn test_execute_meta_transaction_transfer_voucher_evm() {
 
     assert_eq!(
         user_virtual_balance.amount,
-        Uint128::zero(),
+        Uint256::zero(),
         "User virtual balance should be zero after meta withdraw"
     );
 
@@ -901,7 +939,11 @@ fn test_execute_meta_transaction_transfer_voucher_evm() {
 
     assert_eq!(
         recipient_virtual_balance.amount,
-        Uint128::from(1000u128),
+        normalize_token_to_voucher(
+            Uint256::from(1000_u128),
+            token_a.token_type.get_decimals().unwrap()
+        )
+        .unwrap(),
         "Recipient virtual balance should be amount of tokens transferred after meta transfer"
     );
 }
@@ -944,6 +986,7 @@ fn test_execute_meta_transaction_swap() {
         token: Token::create("token.a".to_string()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: token_denom_a.to_string(),
+            decimals: Some(18),
         },
     };
 
@@ -952,14 +995,15 @@ fn test_execute_meta_transaction_swap() {
         token: Token::create("token.b".to_string()).unwrap(),
         token_type: euclid::token::TokenType::Native {
             denom: token_denom_b.to_string(),
+            decimals: Some(18),
         },
     };
 
     register_token(&factory_contract, &router_contract, token_a.clone()).unwrap();
     register_token(&factory_contract, &router_contract, token_b.clone()).unwrap();
     let pair_info = PairWithDenomAndAmount {
-        token_1: token_a.clone().with_amount(Uint128::from(1000000u128)),
-        token_2: token_b.clone().with_amount(Uint128::from(1000000u128)),
+        token_1: token_a.clone().with_amount(Uint256::from(1000000u128)),
+        token_2: token_b.clone().with_amount(Uint256::from(1000000u128)),
     };
     create_pool(
         &factory_contract,
@@ -974,10 +1018,10 @@ fn test_execute_meta_transaction_swap() {
         &factory_contract,
         &router_contract,
         token_a.clone(),
-        Uint128::from(1000u128),
+        Uint256::from(1000u128),
         vec![Recipient {
             recipient: user.clone(),
-            amount: Limit::Dynamic(Uint128::zero()),
+            amount: Limit::Dynamic(Uint256::zero()),
             denom: TokenType::Voucher {},
             forwarding_message: None,
             unsafe_refund_as_voucher: None,
@@ -1007,7 +1051,11 @@ fn test_execute_meta_transaction_swap() {
 
     assert_eq!(
         user_virtual_balance.amount,
-        Uint128::from(1000u128),
+        normalize_token_to_voucher(
+            Uint256::from(1000_u128),
+            token_a.token_type.get_decimals().unwrap()
+        )
+        .unwrap(),
         "User virtual balance should be amount of tokens deposited before meta withdraw"
     );
 
@@ -1016,24 +1064,29 @@ fn test_execute_meta_transaction_swap() {
         token_type: euclid::token::TokenType::Voucher {},
     };
 
-    let mut swap_msg = RouterCrossChainSwapExecuteMsg {
+    let mut swap_msg = SwapSendMsg {
         sender: user.clone(),
         tx_id: "".to_string(),
         asset_in: token_a_voucher.clone(),
-        amount_in: Uint128::from(1000u128),
+        amount_in: normalize_token_to_voucher(
+            Uint256::from(1000_u128),
+            token_a.token_type.get_decimals().unwrap(),
+        )
+        .unwrap(),
         asset_out: token_b.token.clone(),
-        min_amount_out: Uint128::from(10u128),
+        min_amount_out: Uint256::from(10u128),
         swaps: vec![NextSwapPair {
             token_in: token_a.token.clone(),
             token_out: token_b.token.clone(),
+            pool_key: None,
             test_fail: None,
         }],
-        partner_fee_amount: Uint128::zero(),
+        partner_fee_amount: Uint256::zero(),
         partner_fee_recipient: user.clone(),
         recipients: vec![],
     };
 
-    let unauthorized_swap = RouterCrossChainExecuteMsg::Swap(swap_msg.clone());
+    let unauthorized_swap = RouterReceiveMsg::Swap(swap_msg.clone());
     let unauthorized_swap_call_data = MetaTransactionCallData {
         target: router_contract.address().unwrap(),
         call_data: to_json_string(&unauthorized_swap).unwrap(),
@@ -1060,7 +1113,7 @@ fn test_execute_meta_transaction_swap() {
 
     swap_msg.recipients = vec![Recipient {
         recipient: user.clone(),
-        amount: Limit::Dynamic(Uint128::zero()),
+        amount: Limit::Dynamic(Uint256::zero()),
         denom: token_b.token_type,
         forwarding_message: None,
         unsafe_refund_as_voucher: None,
@@ -1068,8 +1121,7 @@ fn test_execute_meta_transaction_swap() {
 
     let mut swap_msg_without_voucher = swap_msg.clone();
     swap_msg_without_voucher.asset_in = token_a;
-    let authorized_swap_without_voucher =
-        RouterCrossChainExecuteMsg::Swap(swap_msg_without_voucher);
+    let authorized_swap_without_voucher = RouterReceiveMsg::Swap(swap_msg_without_voucher);
     let authorized_swap_without_voucher_call_data = MetaTransactionCallData {
         target: router_contract.address().unwrap(),
         call_data: to_json_string(&authorized_swap_without_voucher).unwrap(),
@@ -1095,7 +1147,7 @@ fn test_execute_meta_transaction_swap() {
         response.unwrap()
     );
     // Lets try to withdraw vouchers through a meta transaction
-    let authorized_swap = RouterCrossChainExecuteMsg::Swap(swap_msg);
+    let authorized_swap = RouterReceiveMsg::Swap(swap_msg);
     let authorized_swap_call_data = MetaTransactionCallData {
         target: router_contract.address().unwrap(),
         call_data: to_json_string(&authorized_swap).unwrap(),
@@ -1132,7 +1184,7 @@ fn test_execute_meta_transaction_swap() {
         factory_chain
             .query_balance(&Addr::unchecked(user.address.clone()), token_denom_b)
             .unwrap(),
-        Uint128::from(998u128),
+        Uint128::from(997u128),
         "User native balance should be amount of tokens swapped after meta swap"
     );
 }

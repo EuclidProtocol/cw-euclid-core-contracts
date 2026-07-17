@@ -1,6 +1,6 @@
 use crate::token::{Pair, Token, TokenType};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint256};
 use cw20::Cw20ReceiveMsg;
 
 #[cw_serde]
@@ -13,6 +13,8 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 #[derive(cw_orch::ExecuteFns)]
+#[cfg_attr(feature = "cross-vm", derive(cross_vm_macros::CwExecuteFns))]
+#[cfg_attr(feature = "cross-vm", cross_vm(trait_name = "EscrowExecuteFns"))]
 pub enum ExecuteMsg {
     // Updates allowed denoms
     AddAllowedDenom {
@@ -29,7 +31,7 @@ pub enum ExecuteMsg {
     // Have a separate Msg for cw20 tokens? flow should be better if the message is unified
     Withdraw {
         recipient: Addr,
-        amount: Uint128,
+        amount: Uint256,
         denom: TokenType,
         forwarding_message: Option<String>,
     },
@@ -37,6 +39,8 @@ pub enum ExecuteMsg {
 
 #[cw_serde]
 #[derive(cw_orch::QueryFns, QueryResponses)]
+#[cfg_attr(feature = "cross-vm", derive(cross_vm_macros::CwQueryFns))]
+#[cfg_attr(feature = "cross-vm", cross_vm(trait_name = "EscrowQueryFns"))]
 pub enum QueryMsg {
     #[returns(StateResponse)]
     State {},
@@ -51,6 +55,12 @@ pub enum QueryMsg {
 
     #[returns(AllowedDenomsResponse)]
     AllowedDenoms {},
+
+    #[returns(DenomBalanceResponse)]
+    GetDenomBalance { denom: String },
+
+    #[returns(crate::build_info::BuildInfoResponse)]
+    GetBuildInfo {},
 }
 
 #[cw_serde]
@@ -60,7 +70,7 @@ pub struct MigrateMsg {}
 pub struct StateResponse {
     pub token: Token,
     pub factory_address: Addr,
-    pub total_amount: Uint128,
+    pub total_amount: Uint256,
 }
 
 #[cw_serde]
@@ -76,6 +86,12 @@ pub struct AllowedDenomsResponse {
 #[cw_serde]
 pub struct AllowedTokenResponse {
     pub allowed: bool,
+}
+
+#[cw_serde]
+pub struct DenomBalanceResponse {
+    pub denom: String,
+    pub amount: Uint256,
 }
 
 #[cw_serde]

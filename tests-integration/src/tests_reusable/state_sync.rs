@@ -1,28 +1,31 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-use crate::helpers::chains::{get_escrow, get_virtual_balance, get_vlp};
+use crate::helpers::chains::{get_concentrated_vlp, get_escrow, get_virtual_balance, get_vlp};
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{Addr, Uint128};
+use cosmwasm_std::{Addr, Uint128, Uint256};
 use cw_orch::mock::MockBase;
-use cw_orch::prelude::{CwOrchQuery, Environment};
+use cw_orch::prelude::{ContractInstance, CwOrchQuery, Environment};
 use euclid::chain::ChainUid;
 use euclid::cross_chain_user::CrossChainUser;
 use euclid::msgs::escrow::QueryMsgFns as EscrowQueryMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::virtual_balance::msg::QueryMsgFns as VirtualBalanceQueryMsgFns;
 use euclid::msgs::vlp::base::GetLiquidityQueryResponse;
+use euclid::msgs::vlp::base::PoolKey;
+use euclid::normalize::normalize_voucher_to_token;
 use euclid::recipient::Recipient;
 use euclid::token::{Pair, Token};
 use euclid::utils::pagination::Pagination;
 use euclid::voucher::BalanceKey;
 use factory::FactoryContract;
+use position_token::PositionTokenContract;
 use router::RouterContract;
 
 #[cw_serde]
 pub struct VoucherBalanceState {
     pub recipient: CrossChainUser,
     pub token: Token,
-    pub amount: Uint128,
+    pub amount: Uint256,
 }
 
 #[cw_serde]
@@ -30,24 +33,39 @@ pub struct UserFundsState {
     pub chain_uid: ChainUid,
     pub user_addr: String,
     pub denom: String,
-    pub amount: Uint128,
+    pub amount: Uint256,
 }
 
 #[cw_serde]
 pub struct EscrowBalanceState {
     pub chain_uid: ChainUid,
     pub token: Token,
-    pub factory_escrow_balance: Uint128,
-    pub router_escrow_balance: Uint128,
+    pub factory_escrow_balance: Uint256,
+    pub router_escrow_balance: Uint256,
 }
 
 #[cw_serde]
 pub struct VlpBalanceState {
     pub pair: Pair,
     pub vlp_address: String,
-    pub token_1_reserve: Uint128,
-    pub token_2_reserve: Uint128,
-    pub total_lp_tokens: Uint128,
+    pub token_1_reserve: Uint256,
+    pub token_2_reserve: Uint256,
+    pub total_lp_tokens: Uint256,
+}
+
+#[cw_serde]
+pub struct ConcentratedVlpBalanceState {
+    pub pool_key: PoolKey,
+    pub vlp_address: String,
+    pub reserve_1: Uint128,
+    pub reserve_2: Uint128,
+    pub lp_shares: Uint128,
+}
+
+#[cw_serde]
+pub struct PositionNftState {
+    pub token_id: String,
+    pub owner: String,
 }
 
 #[cw_serde]
@@ -56,6 +74,8 @@ pub struct StateSync {
     pub user_funds: Vec<UserFundsState>,
     pub escrow_balances: Vec<EscrowBalanceState>,
     pub vlp_balances: Vec<VlpBalanceState>,
+    pub concentrated_vlp_balances: Vec<ConcentratedVlpBalanceState>,
+    pub position_nfts: Vec<PositionNftState>,
 }
 
 #[derive(Clone)]
@@ -67,7 +87,7 @@ pub struct UserFundsQuery {
 }
 
 impl StateSync {
-    pub fn voucher_balance(&self, recipient: &CrossChainUser, token: &Token) -> Option<Uint128> {
+    pub fn voucher_balance(&self, recipient: &CrossChainUser, token: &Token) -> Option<Uint256> {
         self.voucher_balances
             .iter()
             .find(|entry| &entry.recipient == recipient && &entry.token == token)
@@ -79,7 +99,7 @@ impl StateSync {
         chain_uid: &ChainUid,
         user_addr: &str,
         denom: &str,
-    ) -> Option<Uint128> {
+    ) -> Option<Uint256> {
         self.user_funds
             .iter()
             .find(|entry| {
@@ -99,10 +119,6 @@ impl StateSync {
             .iter()
             .find(|entry| &entry.chain_uid == chain_uid && &entry.token == token)
     }
-
-    // pub fn vlp_balance(&self, pair: &Pair) -> Option<&VlpBalanceState> {
-    //     self.vlp_balances.iter().find(|entry| &entry.pair == pair)
-    // }
 }
 
 pub(crate) fn sync_state(
@@ -120,20 +136,44 @@ pub(crate) fn sync_state(
         &router.get_state().unwrap().virtual_balance_address,
     );
 
+    let all_metadata = virtual_balance_contract
+        .get_all_token_metadata(None)
+        .unwrap()
+        .metadata;
+
     let voucher_balances = recipients
         .iter()
         .filter(|recipient| recipient.denom.is_voucher())
         .flat_map(|recipient| {
-            voucher_tokens.iter().map(|token| VoucherBalanceState {
-                recipient: recipient.recipient.clone(),
-                token: token.clone(),
-                amount: virtual_balance_contract
+            voucher_tokens.iter().map(|token| {
+                let amount = virtual_balance_contract
                     .get_balance(BalanceKey {
                         cross_chain_user: recipient.recipient.clone(),
                         token_id: token.to_string(),
                     })
                     .unwrap()
-                    .amount,
+                    .amount;
+
+                // De-normalize amount to token's original decimals for easier testing
+                let metadata = all_metadata
+                    .iter()
+                    .find(|m| m.token == *token && m.chain_uid == recipient.recipient.chain_uid);
+
+                let de_normalized_amount = if let Some(metadata) = metadata {
+                    normalize_voucher_to_token(amount, metadata.token_type.get_decimals().unwrap())
+                        .unwrap()
+                } else {
+                    panic!(
+                        "No metadata found for token {:?} on chain {:?} — sync_state cannot de-normalize",
+                        token, recipient.recipient.chain_uid
+                    );
+                };
+
+                VoucherBalanceState {
+                    recipient: recipient.recipient.clone(),
+                    token: token.clone(),
+                    amount: de_normalized_amount,
+                }
             })
         })
         .collect();
@@ -144,13 +184,15 @@ pub(crate) fn sync_state(
             chain_uid: query.chain_uid.clone(),
             user_addr: query.user_addr.clone(),
             denom: query.denom.clone(),
-            amount: query
-                .chain
-                .query_balance(
-                    &Addr::unchecked(query.user_addr.clone()),
-                    query.denom.as_str(),
-                )
-                .unwrap(),
+            amount: Uint256::from(
+                query
+                    .chain
+                    .query_balance(
+                        &Addr::unchecked(query.user_addr.clone()),
+                        query.denom.as_str(),
+                    )
+                    .unwrap(),
+            ),
         })
         .collect();
 
@@ -161,17 +203,14 @@ pub(crate) fn sync_state(
                 .state()
                 .unwrap()
                 .total_amount;
-            let router_escrow_balance = router
-                .query_token_escrows(
-                    Pagination::new(Some(escrow_chain_uid.clone()), None, None, Some(1)),
-                    token.clone(),
-                )
+            let router_escrow_balance: Uint256 = virtual_balance_contract
+                .get_token_escrows(token.to_string(), None)
                 .unwrap()
-                .chains
+                .escrows
                 .iter()
-                .find(|chain| chain.chain_uid == escrow_chain_uid)
+                .filter(|chain| chain.chain_uid == escrow_chain_uid)
                 .map(|chain| chain.balance)
-                .unwrap_or(Uint128::zero());
+                .fold(Uint256::zero(), |acc, b| acc + b);
 
             EscrowBalanceState {
                 chain_uid: escrow_chain_uid.clone(),
@@ -209,5 +248,89 @@ pub(crate) fn sync_state(
         user_funds,
         escrow_balances,
         vlp_balances,
+        concentrated_vlp_balances: vec![],
+        position_nfts: vec![],
     }
+}
+
+pub(crate) fn sync_state_with_concentrated(
+    factory: &FactoryContract<MockBase>,
+    router: &RouterContract<MockBase>,
+    recipients: Vec<Recipient>,
+    voucher_tokens: Vec<Token>,
+    user_funds_queries: Vec<UserFundsQuery>,
+    escrow_tokens: Vec<Token>,
+    escrow_chain_uid: ChainUid,
+    vlp_pairs: Vec<Pair>,
+    concentrated_pool_keys: Vec<PoolKey>,
+    position_token: Option<&PositionTokenContract<MockBase>>,
+) -> StateSync {
+    let mut state = sync_state(
+        factory,
+        router,
+        recipients,
+        voucher_tokens,
+        user_funds_queries,
+        escrow_tokens,
+        escrow_chain_uid.clone(),
+        vlp_pairs,
+    );
+
+    let concentrated_vlp_balances = concentrated_pool_keys
+        .iter()
+        .map(|pool_key| {
+            let vlp_response = router.get_vlp_by_pool_key(pool_key.clone()).unwrap();
+            let vlp_contract = get_concentrated_vlp(
+                router.environment(),
+                &Addr::unchecked(vlp_response.vlp.clone()),
+            );
+            let pool: euclid::msgs::vlp::concentrated::msg::ConcentratedPoolResponse = vlp_contract
+                .query(&euclid::msgs::vlp::concentrated::msg::QueryMsg::Pool {
+                    chain_uid: escrow_chain_uid.clone(),
+                    pool_key: pool_key.clone(),
+                })
+                .unwrap();
+            ConcentratedVlpBalanceState {
+                pool_key: pool_key.clone(),
+                vlp_address: vlp_response.vlp,
+                reserve_1: pool.reserve_1,
+                reserve_2: pool.reserve_2,
+                lp_shares: pool.lp_shares,
+            }
+        })
+        .collect();
+
+    let position_nfts = if let Some(position_token) = position_token {
+        if position_token.address().is_ok() {
+            position_token
+                .query::<euclid::msgs::position_token::TokensResponse>(
+                    &euclid::msgs::position_token::QueryMsg::AllTokens {
+                        pagination: Pagination::default(),
+                    },
+                )
+                .unwrap()
+                .tokens
+                .into_iter()
+                .map(|token_id| {
+                    let owner = position_token
+                        .query::<euclid::msgs::position_token::OwnerOfResponse>(
+                            &euclid::msgs::position_token::QueryMsg::OwnerOf {
+                                token_id: token_id.clone(),
+                            },
+                        )
+                        .unwrap()
+                        .owner;
+                    PositionNftState { token_id, owner }
+                })
+                .collect()
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
+    };
+
+    state.concentrated_vlp_balances = concentrated_vlp_balances;
+    state.position_nfts = position_nfts;
+    state
 }

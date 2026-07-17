@@ -1,12 +1,38 @@
 #![cfg(not(target_arch = "wasm32"))]
 
+pub mod constants;
+pub mod test_macros;
+
 pub mod factory_add_liquidity;
 pub mod factory_create_pool;
+pub mod factory_cw20_deposit;
 pub mod factory_full;
 pub mod factory_register;
 pub mod factory_register_denom;
+pub mod factory_single_sided;
 pub mod factory_swap;
+pub mod mixed_decimal_pool;
 pub mod pending_packets;
+pub mod pool_factory_clp_create;
+pub mod pool_factory_cp_add_liquidity;
+pub mod pool_factory_cp_create;
+pub mod pool_factory_cp_remove_liquidity;
+pub mod pool_factory_reply_rejection;
+pub mod reorg_dedup_paths;
 pub mod state_sync;
+pub mod tx_id_format;
+pub mod voucher_release;
 
-pub mod constants;
+pub mod clp;
+pub mod concentrated_collect;
+pub mod concentrated_create_pool;
+pub mod concentrated_failures;
+pub mod concentrated_fees;
+pub mod concentrated_override;
+pub mod concentrated_positions;
+pub mod concentrated_swap;
+pub mod concentrated_v3_fees;
+pub mod concentrated_v3_oracle;
+pub mod concentrated_v3_positions;
+pub mod concentrated_v3_swap;
+pub mod factory_swap_mixed_concentrated;

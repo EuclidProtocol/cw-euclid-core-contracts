@@ -1,5 +1,5 @@
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Addr, Binary, Uint128};
+use cosmwasm_std::{Addr, Binary, Uint256};
 
 use crate::{
     cross_chain_user::CrossChainUser, msgs::hook::VoucherReceive, recipient::Recipient,
@@ -14,6 +14,8 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 #[derive(cw_orch::ExecuteFns)]
+#[cfg_attr(feature = "cross-vm", derive(cross_vm_macros::CwExecuteFns))]
+#[cfg_attr(feature = "cross-vm", cross_vm(trait_name = "ClaimerExecuteFns"))]
 pub enum ExecuteMsg {
     ClaimVoucher(SignedTransaction),
     VoucherReceive(VoucherReceive),
@@ -22,6 +24,8 @@ pub enum ExecuteMsg {
 
 #[cw_serde]
 #[derive(cw_orch::QueryFns, QueryResponses)]
+#[cfg_attr(feature = "cross-vm", derive(cross_vm_macros::CwQueryFns))]
+#[cfg_attr(feature = "cross-vm", cross_vm(trait_name = "ClaimerQueryFns"))]
 pub enum QueryMsg {
     #[returns(State)]
     GetState {},
@@ -55,6 +59,8 @@ pub enum QueryMsg {
     },
     #[returns((u128, Claim))]
     GetClaimByPseudoClaimId { pseudo_claim_id: String },
+    #[returns(crate::build_info::BuildInfoResponse)]
+    GetBuildInfo {},
 }
 
 #[cw_serde]
@@ -83,7 +89,7 @@ pub struct UpdateAdminMsg {
 #[cw_serde]
 pub struct Claim {
     pub token: Token,
-    pub amount: Uint128,
+    pub amount: Uint256,
     pub claimer_pubkey: Binary,
     pub sender: CrossChainUser,
     pub pseudo_claim_id: Option<String>, // Used by indexers

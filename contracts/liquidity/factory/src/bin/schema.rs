@@ -4,7 +4,7 @@ use cosmwasm_schema::{export_schema_with_title, schema_for, write_api};
 
 use euclid::msgs::factory::{
     cw20::FactoryCw20HookMsg, euclid_receive::FactoryEuclidReceiveHook, ExecuteMsg, InstantiateMsg,
-    QueryMsg,
+    MigrateMsg, QueryMsg,
 };
 
 fn main() {
@@ -15,6 +15,7 @@ fn main() {
         instantiate: InstantiateMsg,
         execute: ExecuteMsg,
         query: QueryMsg,
+        migrate: MigrateMsg,
     }
 
     export_schema_with_title(&schema_for!(FactoryCw20HookMsg), &out_dir, "cw20receive");

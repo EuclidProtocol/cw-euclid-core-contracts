@@ -1,5 +1,5 @@
 #![cfg(not(target_arch = "wasm32"))]
-use cosmwasm_std::{from_json, Uint128};
+use cosmwasm_std::Uint256;
 use cw_orch::{mock::MockBase, prelude::*};
 use cw_orch_interchain::mock::MockInterchainEnv;
 use cw_orch_interchain::prelude::IbcQueryHandler;
@@ -10,23 +10,35 @@ use euclid::msgs::router::execute::ExecuteMsgFns as RouterExecuteMsgFns;
 use euclid::msgs::router::query::QueryMsgFns as RouterQueryMsgFns;
 use euclid::msgs::router::{RegisterFactoryChainCosmos, RegisterFactoryChainNative};
 use euclid::{chain::ChainUid, msgs::router::RegisterFactoryChainEvm};
-use euclid_ibc::factory_ibc::FactoryCrossChainExecuteMsg;
 use factory::FactoryContract;
 use lp_token::LpTokenContract;
+use position_token::PositionTokenContract;
 use router::RouterContract;
 
 use crate::helpers::chains::setup_relayer;
 use crate::helpers::relayer::{
-    ack_register_factory_evm, extract_send_packet_events, relay_router_ack_packet,
-    relay_router_send_packet,
+    ack_register_factory_evm, decode_factory_receive_msg, extract_send_packet_events,
+    relay_router_ack_packet, relay_router_send_packet,
 };
-use crate::tests_reusable::constants::ROUTER_CHAIN_ID;
+use crate::tests_reusable::constants::{
+    FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL, ROUTER_CHAIN_ID,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub enum FactorySetupMode {
     Native,
     Ibc,
     Evm,
+}
+
+impl FactorySetupMode {
+    pub fn chain_id(&self) -> &'static str {
+        match self {
+            Self::Native => FACTORY_CHAIN_ID_LOCAL,
+            Self::Ibc => FACTORY_CHAIN_ID_IBC,
+            Self::Evm => FACTORY_CHAIN_ID_EVM,
+        }
+    }
 }
 
 pub fn setup_factory(
@@ -62,6 +74,7 @@ pub fn setup_factory_with_mode(
     let factory = FactoryContract::new(chain.clone());
     let escrow = EscrowContract::new(chain.clone());
     let lp_token = LpTokenContract::new(chain.clone());
+    let position_token = PositionTokenContract::new(chain.clone());
     let relayer = setup_relayer(&chain, vec![vsl_chain_uid.as_str(), chain_uid.as_str()])?;
 
     let string_length = factory_chain_id.len();
@@ -69,6 +82,7 @@ pub fn setup_factory_with_mode(
     factory.upload().unwrap();
     escrow.upload().unwrap();
     lp_token.upload().unwrap();
+    position_token.upload().unwrap();
 
     let is_native = matches!(mode, FactorySetupMode::Native);
 
@@ -80,10 +94,11 @@ pub fn setup_factory_with_mode(
                 chain_uid: chain_uid.clone(),
                 escrow_code_id: escrow.code_id().unwrap(),
                 lp_code_id: lp_token.code_id().unwrap(),
+                position_token_code_id: position_token.code_id().unwrap(),
                 relayer_contract: relayer.address().unwrap(),
                 rate_limit_fee_recipient: chain.addr_make("rate_limit_fee_recipient"),
                 rate_limit_fee_denom: "ufee".to_string(),
-                rate_limit_free_limit: Uint128::from(10u128),
+                rate_limit_free_limit: Uint256::from(10u128),
                 is_native,
             },
             None,
@@ -118,7 +133,7 @@ pub fn setup_factory_with_mode(
                     .unwrap();
                 let send_packet_events = extract_send_packet_events(&register_request.events);
                 let packet = send_packet_events.first().unwrap();
-                let msg: FactoryCrossChainExecuteMsg = from_json(&packet.msg).unwrap();
+                let msg = decode_factory_receive_msg(packet);
                 let tx_id = msg.get_tx_id();
 
                 let _relay_ack_events = ack_register_factory_evm(
@@ -148,19 +163,14 @@ pub fn setup_factory_with_mode(
 mod tests {
     use super::*;
     use crate::helpers::chains::setup_router;
-    use crate::tests_reusable::constants::{
-        FACTORY_CHAIN_ID_EVM, FACTORY_CHAIN_ID_IBC, FACTORY_CHAIN_ID_LOCAL,
-    };
-    use rstest::rstest;
 
-    #[rstest]
-    #[case(FactorySetupMode::Native, FACTORY_CHAIN_ID_LOCAL)]
-    #[case(FactorySetupMode::Ibc, FACTORY_CHAIN_ID_IBC)]
-    #[case(FactorySetupMode::Evm, FACTORY_CHAIN_ID_EVM)]
-    fn setup_factory_registers_chain(
-        #[case] mode: FactorySetupMode,
-        #[case] factory_chain_id: &str,
-    ) {
+    use crate::tests_reusable::test_macros::factory_modes;
+    use rstest::rstest;
+    use rstest_reuse::apply;
+
+    #[apply(factory_modes)]
+    fn setup_factory_registers_chain(mode: FactorySetupMode) {
+        let factory_chain_id = mode.chain_id();
         let sender = "sender_for_all_chains";
         let mut chains = vec![(ROUTER_CHAIN_ID, sender)];
         if ROUTER_CHAIN_ID != factory_chain_id {

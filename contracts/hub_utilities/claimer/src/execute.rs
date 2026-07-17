@@ -1,5 +1,5 @@
 use cosmwasm_std::{
-    ensure, from_json, to_json_binary, DepsMut, Env, MessageInfo, Response, Uint128, WasmMsg,
+    ensure, from_json, to_json_binary, DepsMut, Env, MessageInfo, Response, Uint256, WasmMsg,
 };
 use euclid::{
     cross_chain_user::CrossChainUser,
@@ -22,6 +22,7 @@ pub fn execute_update_admin(
     info: &MessageInfo,
     msg: UpdateAdminMsg,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(info)?;
     let current_admin = ADMIN.load(deps.storage)?;
     // Ensure the sender is the current admin
     ensure!(info.sender == current_admin, ContractError::Unauthorized {});
@@ -40,6 +41,7 @@ pub fn execute_virtual_balance_receive(
     info: &MessageInfo,
     transfer_msg: VoucherReceive,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(info)?;
     let state = STATE.load(deps.storage)?;
     ensure!(
         info.sender == state.vcoin_address,
@@ -48,20 +50,23 @@ pub fn execute_virtual_balance_receive(
 
     let claim_msg: VoucherReceiveHookMsg = from_json(transfer_msg.msg.clone())?;
     match claim_msg {
-        VoucherReceiveHookMsg::CreateVoucherClaim(msg) => execute_create_voucher_claim(
-            deps,
-            &transfer_msg.sender,
-            Token::create(transfer_msg.token_id)?,
-            transfer_msg.amount,
-            msg,
-        ),
+        VoucherReceiveHookMsg::CreateVoucherClaim(msg) => {
+            let amount: Uint256 = transfer_msg.amount;
+            execute_create_voucher_claim(
+                deps,
+                &transfer_msg.sender,
+                Token::create(transfer_msg.token_id)?,
+                amount,
+                msg,
+            )
+        }
     }
 }
 pub fn execute_create_voucher_claim(
     deps: &mut DepsMut,
     sender: &CrossChainUser,
     token: Token,
-    amount: Uint128,
+    amount: Uint256,
     msg: CreateVoucherClaim,
 ) -> Result<Response, ContractError> {
     // Reject mixed-case or empty addresses before storing the claim
@@ -101,6 +106,7 @@ pub fn execute_claim_voucher(
     info: &MessageInfo,
     msg: SignedTransaction,
 ) -> Result<Response, ContractError> {
+    cw_utils::nonpayable(info)?;
     let signed_data: MsgSignData = from_json(msg.data.clone())?;
     let first_msg = signed_data
         .msgs

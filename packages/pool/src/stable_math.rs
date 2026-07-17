@@ -1,11 +1,15 @@
-use cosmwasm_std::{Decimal256, StdError, StdResult, Uint128, Uint64};
+use cosmwasm_std::{Decimal256, StdError, StdResult, Uint256, Uint64};
 use euclid::error::ContractError;
 use euclid::utils::math::Decimal256Ext;
 
-use crate::SwapResult;
+use crate::common::SwapResult;
 /// N = 2
 pub const N_COINS: Decimal256 = Decimal256::raw(2000000000000000000);
 pub const AMP_PRECISION: u64 = 100;
+/// Minimum amp factor: leverage = amp / AMP_PRECISION * N_COINS must be >= 1.
+/// With N_COINS=2, amp >= AMP_PRECISION / 2 = 50.
+/// We use AMP_PRECISION (100) for a safety margin (leverage >= 2).
+pub const MIN_AMP: u64 = AMP_PRECISION;
 /// The maximum number of calculation steps for Newton's method.
 const ITERATIONS: u8 = 64;
 /// 1e-6
@@ -21,14 +25,16 @@ pub const TOL: Decimal256 = Decimal256::raw(1000000000000);
 /// The `TOKEN_PRECISION = 1` scaling multiplies pool values by 10 during
 /// the return amount computation, so pools at `Uint128::MAX` would overflow.
 pub fn compute_stable_swap(
-    offer_amount: Uint128,
-    offer_pool: Uint128,
-    ask_pool: Uint128,
+    offer_amount: Uint256,
+    offer_pool: Uint256,
+    ask_pool: Uint256,
     amp_factor: Uint64,
 ) -> Result<SwapResult, ContractError> {
     // Validate inputs
-    if amp_factor.is_zero() {
-        return Err(ContractError::new("Amp factor must be greater than zero"));
+    if amp_factor.u64() < MIN_AMP {
+        return Err(ContractError::new(&format!(
+            "Amp factor must be at least {MIN_AMP}"
+        )));
     }
     if offer_pool.is_zero() || ask_pool.is_zero() {
         return Err(ContractError::new("Pool reserves must be non-zero"));
@@ -43,7 +49,7 @@ pub fn compute_stable_swap(
     let ask_pool_dec = Decimal256::checked_from_integer(ask_pool)?;
 
     // Extra decimal digit used during subtraction to reduce rounding error.
-    // Both ask_pool and new_ask_pool are scaled by 10 (via to_uint128_with_precision(1)),
+    // Both ask_pool and new_ask_pool are scaled by 10 (via to_uint256_with_precision(1)),
     // subtracted as integers, then divided by 10. This preserves one extra digit
     // of precision compared to truncating each value independently.
     // NOTE: This limits max pool value to Uint128::MAX / 10, since the ×10 scaling
@@ -60,15 +66,15 @@ pub fn compute_stable_swap(
     let new_ask_pool = calc_y(amp_factor, new_offer_pool, &xp, TOKEN_PRECISION)?;
 
     // Calculate return amount (what user receives)
-    let ask_pool_amount = ask_pool_dec.to_uint128_with_precision(TOKEN_PRECISION)?;
+    let ask_pool_amount = ask_pool_dec.to_uint256_with_precision(TOKEN_PRECISION)?;
     let new_ask_pool_amount = new_ask_pool;
     let return_amount = ask_pool_amount
         .checked_sub(new_ask_pool_amount)
         .map_err(|_| ContractError::new("Negative return amount"))?
-        .checked_div(Uint128::new(10u128.pow(TOKEN_PRECISION as u32)))?;
+        .checked_div(Uint256::from(10u128.pow(TOKEN_PRECISION as u32)))?;
 
     // Calculate offer amount for spread calculation
-    let offer_amount = offer_amount_dec.to_uint128_with_precision(0_u32)?;
+    let offer_amount = offer_amount_dec.to_uint256_with_precision(0_u32)?;
 
     // Calculate spread (difference between what user provides and receives)
     let spread_amount = offer_amount.abs_diff(return_amount);
@@ -159,7 +165,7 @@ pub(crate) fn calc_y(
     new_amount: Decimal256,
     xp: &[Decimal256],
     target_precision: u8,
-) -> StdResult<Uint128> {
+) -> StdResult<Uint256> {
     let d = compute_d(amp, xp)?;
     // Use same amp scaling as compute_d: leverage = (amp / AMP_PRECISION) * N_COINS
     let leverage = Decimal256::from_ratio(amp, AMP_PRECISION).checked_mul(N_COINS)?;
@@ -206,7 +212,7 @@ pub(crate) fn calc_y(
         y = y_sq_over_denom.checked_add(c_over_denom)?;
 
         if y.abs_diff(y_prev) <= TOL {
-            return y.to_uint128_with_precision(target_precision);
+            return y.to_uint256_with_precision(target_precision);
         }
     }
 

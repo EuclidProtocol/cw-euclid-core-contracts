@@ -2,4 +2,9 @@
 /artifacts
 .DS_Store
 /schema
+/.claude
+/plans
 /proto
+.worktrees
+.claude
+TODO.md

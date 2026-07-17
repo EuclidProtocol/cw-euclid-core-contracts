@@ -1,8 +1,20 @@
 use crate::{chain::ChainUid, cross_chain_user::CrossChainUser, error::ContractError};
 use cosmwasm_schema::cw_serde;
+
+// Voucher is stored at 24 decimal precision
+pub const VOUCHER_DECIMAL: u32 = 24;
+
+/// Decimals for LP cw20 tokens. cw20 tokens have a decimals limit of 18
+/// (enforced by cw20-base `InstantiateMsg::validate`), which is why 18 is
+/// used here instead of the 24-decimal voucher precision.
+pub const LP_TOKEN_DECIMAL: u8 = 18;
 type AnyChainAddress = String;
+
 type TokenId = String;
 // Balance is stored again Chain Id, Address of the user on any chain, and for a specific Token Id
+// Why token denom is not included in the key?
+// Vouchers are made denom independent as it can be used from a chain where that token doesn't even exist. For example, a user can manage BNB or ETH from a cosmos chain as a voucher.
+// So, if denom is included in the key then it would be difficult to assign it to a chain that doesn't have that token (in our example, bnb on cosmoshub)
 pub type SerializedBalanceKey = (ChainUid, AnyChainAddress, TokenId);
 
 #[cw_serde]

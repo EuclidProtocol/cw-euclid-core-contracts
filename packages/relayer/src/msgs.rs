@@ -39,6 +39,9 @@ pub enum QueryMsg {
 
     #[returns(ValidatorsResponse)]
     Validators {},
+
+    #[returns(euclid::build_info::BuildInfoResponse)]
+    GetBuildInfo {},
 }
 
 #[cw_serde]

@@ -1,6 +1,6 @@
 [package]
 name = "router"
-version = "0.2.5"
+version = "0.2.6"
 authors = [
   "Anshudhar Kumar Singh <anshudhar2001@gmail.com>",
   "Joe Monem <jmonem@icloud.com>",
@@ -40,6 +40,7 @@ schemars = "0.8.15"
 serde = { workspace = true, default-features = false, features = ["derive"] }
 thiserror = { workspace = true }
 euclid = { workspace = true }
+euclid-encoding = { workspace = true }
 euclid-ibc = { workspace = true }
 function_name = { workspace = true }
 
@@ -47,3 +48,4 @@ function_name = { workspace = true }
 cw-orch = { workspace = true }
 cw-multi-test = { workspace = true }
 mock = { workspace = true }
+rstest = "0.19.0"
